@@ -10,6 +10,7 @@
 import logging
 import telegram
 import html  # 导入 html 用于转义
+import data_manager  # 导入 data_manager 以便访问 submission_list 的 id
 from telegram import Update, User, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -70,40 +71,38 @@ async def get_submission_details(
         logger.debug(f"get_submission_details: 回复的消息无效或不是来自机器人。")
         return None, None, None, None
 
-    reply_to_msg = (
-        message.reply_to_message
-    )  # 这是 Bot 发送到群里的消息 (可能是转发的单条，也可能是媒体组的第一条)
-    submission_key = f"{group_id}:{reply_to_msg.message_id}"
-    submission_info = get_submission(submission_key)
+    reply_to_msg = message.reply_to_message  # 审稿人实际回复的消息
+    reply_to_msg_id = reply_to_msg.message_id
+    submission_key = f"{group_id}:{reply_to_msg_id}"  # 先尝试用回复的消息 ID 构建 Key
+    submission_info = get_submission(submission_key)  # data_manager.get_submission
+
+    # --- 新增：处理媒体组查找 ---
+    if not submission_info and reply_to_msg.media_group_id:
+        logger.debug(
+            f"Key {submission_key} 未找到，且回复的是媒体组消息，尝试查找媒体组主记录..."
+        )
+        found_key = None
+        # 遍历内存中的 submission_list 查找 (需要加锁)
+        with data_manager.DATA_LOCK:  # 访问全局变量需加锁
+            # 为了效率，可以只查找最近的 N 条记录，或者只查找与当前群组相关的
+            for key, value in data_manager.submission_list.items():
+                # 确保 key 属于当前群组，并且记录是媒体组，并且包含当前回复的消息 ID
+                if (
+                    key.startswith(f"{group_id}:")
+                    and value.get("is_media_group")
+                    and reply_to_msg_id in value.get("media_group_fwd_ids", [])
+                ):
+                    found_key = key
+                    logger.debug(f"通过媒体组 ID 找到主记录 Key: {found_key}")
+                    break  # 找到就跳出循环
+        if found_key:
+            submission_key = found_key  # 使用找到的主 Key
+            submission_info = get_submission(submission_key)  # 重新获取主记录信息
+    # --- 媒体组查找结束 ---
 
     if not submission_info:
-        logger.debug(
-            f"get_submission_details: 在 data_manager 中未找到 key {submission_key}"
-        )
-        # --- 针对媒体组的兼容处理 ---
-        # 检查这条消息是否是已知媒体组的一部分 (需要访问消息对象检查 media_group_id)
-        # 并且检查 data_manager 中是否有以这个 media_group_id 关联的记录
-        # 这个逻辑比较复杂，而且容易出错，暂时不实现。
-        # 更好的方法是在存储 submission_info 时，如果 is_media_group=True，
-        # 不仅用第一条消息 ID 做 key，还可以在一个地方额外记录 media_group_id -> first_message_key 的映射。
-        # 或者，在 handle_submission_callback 中，为媒体组的 *每一条* 消息都创建一条记录？（这会导致记录冗余）
-
-        # --- 简化处理：假设 key 找不到就是真的找不到了 ---
+        logger.debug(f"get_submission_details: 最终未找到 key {submission_key} 的记录")
         return submission_key, None, None, None
-        # -----------------------------------------
-
-    # --- 验证被回复的消息是否符合预期 ---
-    # is_media_group_in_record = submission_info.get('is_media_group', False)
-    # has_forward_origin = bool(reply_to_msg.forward_origin)
-    #
-    # if is_media_group_in_record and has_forward_origin:
-    #     logger.warning(f"记录显示是媒体组，但回复的消息有 forward_origin (不匹配): key={submission_key}")
-    #     # 可能数据不一致，可以选择返回错误
-    #     # return submission_key, None, None, None
-    # elif not is_media_group_in_record and not has_forward_origin:
-    #     logger.warning(f"记录显示是单条消息，但回复的消息没有 forward_origin (不匹配): key={submission_key}")
-    #     # 可能数据不一致
-    #     # return submission_key, None, None, None
     # --------------------------------------
 
     sender_id = submission_info.get("Sender_ID")
