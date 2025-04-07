@@ -1,0 +1,7 @@
+{
+    "Token": "YOUR_BOT_TOKEN", // 从 BotFather 获取
+    "Admin": 123456789,       // 你的 Telegram User ID (机器人管理员)
+    "Group_ID": 0,            // 初始为 0，启动后由管理员在群内使用 /setgroup 设置
+    "Publish_Channel_ID": "", // 初始为空，启动后由管理员使用 /setchannel 设置
+    "BlockedUsers": []        // 黑名单，默认为空
+}

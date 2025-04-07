@@ -77,8 +77,8 @@
       ```bash
       sudo supervisorctl reread
       sudo supervisorctl update
-      sudo supervisorctl start SubmissionBot
-      sudo supervisorctl status SubmissionBot
+      sudo supervisorctl start ChongLangTouGaoBot
+      sudo supervisorctl status ChongLangTouGaoBot
       ```
 
 6.  **初始化设置**:
