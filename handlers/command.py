@@ -1,8 +1,10 @@
 # handlers/command.py
 
+"""处理通用命令和管理员命令"""
+
 import logging
 import telegram  # 需要导入 telegram 以获取 __version__
-from telegram import Update
+from telegram import Update, Chat
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode  # 确保导入
 from telegram.error import TelegramError
