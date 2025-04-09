@@ -177,49 +177,80 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 origin_info["chat_username"] = origin.chat.username
                 origin_info["message_id"] = origin.message_id
             media_group_info_to_store["first_message_forward_origin"] = origin_info
-        # ------------------------------------------
+            # ------------------------------------------
 
-        # --- 提取并处理媒体组中的每条消息信息，准备存储 ---
+            # --- 提取并处理媒体组中的每条消息信息，准备存储 ---
+            # --- 修改：提取并处理媒体信息列表 ---
+        supported_media_found = False  # 新增标记
         for msg in collected_messages:
             media_info = {"message_id": msg.message_id}
             caption = msg.caption
-            caption_entities = msg.caption_entities
+            caption_html = msg.caption_html  # 存储 HTML caption
             has_spoiler = msg.has_media_spoiler
+
             if msg.photo:
                 media_info.update(
                     {
                         "type": "photo",
                         "file_id": msg.photo[-1].file_id,
                         "caption": caption,
-                        "caption_entities": caption_entities,
+                        "caption_html": caption_html,
                         "has_spoiler": has_spoiler,
                     }
                 )
+                supported_media_found = True  # 标记找到支持的类型
             elif msg.video:
                 media_info.update(
                     {
                         "type": "video",
                         "file_id": msg.video.file_id,
                         "caption": caption,
-                        "caption_entities": caption_entities,
+                        "caption_html": caption_html,
                         "has_spoiler": has_spoiler,
                     }
                 )
+                supported_media_found = True  # 标记找到支持的类型
             else:
-                logger.warning(f"媒体组 {media_group_id} 中包含不支持聚合的消息类型")
-                continue
-            media_group_info_to_store["messages"].append(media_info)
+                # 仍然记录不支持的类型及其 ID
+                media_info["type"] = "unsupported"
+                media_info["original_type"] = (
+                    msg.effective_attachment.__class__.__name__
+                    if msg.effective_attachment
+                    else "unknown"
+                )
+                logger.warning(
+                    f"媒体组 {media_group_id} 中包含不支持类型: {media_info['original_type']} (Msg ID: {msg.message_id})"
+                )
+
+            media_group_info_to_store["messages"].append(media_info)  # 添加所有条目
+
+        # --- 检查是否至少有一个支持的媒体 ---
+        if not supported_media_found:
+            logger.warning(
+                f"媒体组 {media_group_id} 中没有任何支持的媒体类型 (图片/视频)，无法处理。"
+            )
+            try:
+                await first_message.reply_text(
+                    "抱歉，您发送的媒体组中似乎没有包含图片或视频，无法处理。"
+                )
+            except Exception as e:
+                logger.error(f"发送无支持媒体通知失败: {e}")
+            return  # 结束任务
 
         # --- 将处理后的媒体组信息暂存到 chat_data，等待用户回调 ---
-        if media_group_info_to_store["messages"]:
-            chat_data[f"pending_group_{sent_button_message.message_id}"] = (
-                media_group_info_to_store
-            )
-            logger.debug(
-                f"Chat data for {user_id} updated with pending group info (button ID: {sent_button_message.message_id})"
-            )
-        else:
-            logger.warning(f"媒体组 {media_group_id} 处理后没有有效的媒体信息可存储。")
+        sent_button_message = await first_message.reply_text(
+            text=prompt_text, reply_markup=markup
+        )
+        logger.info(
+            f"向用户 {user_name} ({user_id}) 发送媒体组 {media_group_id} 的投稿类型选择"
+        )
+
+        chat_data[f"pending_group_{sent_button_message.message_id}"] = (
+            media_group_info_to_store
+        )
+        logger.debug(
+            f"Chat data for {user_id} updated with pending group info (button ID: {sent_button_message.message_id})"
+        )
 
     except TelegramError as e:
         logger.error(f"向用户 {user_id} 发送媒体组选项失败: {e}")

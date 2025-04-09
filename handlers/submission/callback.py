@@ -196,32 +196,49 @@ async def handle_submission_callback(
         first_original_msg_id = media_list_info[0]["message_id"]
         media_to_send = []
         caption_added = False
-        for item in media_list_info:
-            caption = item.get("caption") if not caption_added else None
+        for i, item in enumerate(media_list_info):
+            # --- 跳过不支持的类型 ---
+            media_type = item.get("type")
+            if media_type == "unsupported":
+                logger.debug(
+                    f"跳过媒体组中不支持的条目: message_id={item.get('message_id')}"
+                )
+                continue
+            caption = item.get("caption")
+            caption_html_stored = item.get("caption_html")
             parse_mode = (
-                ParseMode.HTML if caption and item.get("caption_entities") else None
-            )
+                ParseMode.HTML if caption_html_stored and i == 0 else None
+            )  # 只有第一个需要解析模式
+            current_caption_to_use = (
+                caption_html_stored if i == 0 else None
+            )  # 使用 HTML 版本
             has_spoiler = item.get("has_spoiler", False)
-            if item.get("type") == "photo":
+            file_id = item.get("file_id")
+            if not file_id:
+                continue
+
+            if media_type == "photo":
                 media_to_send.append(
                     InputMediaPhoto(
-                        media=item["file_id"],
-                        caption=caption,
+                        media=file_id,
+                        caption=current_caption_to_use,
                         parse_mode=parse_mode,
                         has_spoiler=has_spoiler,
                     )
                 )
-                caption_added = caption_added or bool(caption)
-            elif item.get("type") == "video":
+                if current_caption_to_use:
+                    caption_added = True  # 标记 caption 已用（虽然只用一次）
+            elif media_type == "video":
                 media_to_send.append(
                     InputMediaVideo(
-                        media=item["file_id"],
-                        caption=caption,
+                        media=file_id,
+                        caption=current_caption_to_use,
                         parse_mode=parse_mode,
                         has_spoiler=has_spoiler,
                     )
                 )
-                caption_added = caption_added or bool(caption)
+                if current_caption_to_use:
+                    caption_added = True
 
         if not media_to_send:
             logger.error(f"媒体组 {media_group_id} 没有可以转发的有效媒体。")
