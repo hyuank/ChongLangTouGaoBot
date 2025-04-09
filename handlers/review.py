@@ -49,6 +49,7 @@ PWS_HELP_TEXT = """
 <code>/status</code> - (权蛆) 显示机器人状态。
 <code>/setgroup</code> - (权蛆，群内) 设置当前群为审核群。
 <code>/setchannel ID或用户名</code> - (权蛆) 设置发布频道。(例如: <code>/setchannel @mychannel</code> 或 <code>/setchannel -100123...</code>)
+<code>/setchatlink 链接</code> - (权蛆) 设置小尾巴中的“聊天”链接。(例如: <code>/setchatlink https://t.me/your_chat</code>)
 """
 
 

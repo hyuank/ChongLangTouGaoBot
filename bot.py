@@ -236,6 +236,7 @@ def main():
                     "status",
                     "setgroup",  # 权蛆设置审核群
                     "setchannel",  # 权蛆设置发布频道
+                    "setchatlink",  # 权蛆设置小尾巴中的“聊天”链接
                     "about",
                     "help",
                 ],

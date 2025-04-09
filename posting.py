@@ -19,7 +19,12 @@ from telegram.ext import ContextTypes
 from telegram.error import TelegramError, Forbidden, BadRequest  # TG API 错误类型
 
 # 从其他模块导入
-from config_loader import get_publish_channel_id, get_group_id
+from config_loader import (
+    get_publish_channel_id,
+    get_group_id,
+    is_footer_enabled,
+    get_chat_link,
+)
 from data_manager import update_submission_status, save_data_async, add_submission
 
 logger = logging.getLogger(__name__)
@@ -224,6 +229,36 @@ async def post_submission(
                 logger.debug("via_link_part 为空，未添加")
         # else: # 用户请求匿名，跳过来源处理 (默认已经是匿名)
         #     logger.debug("用户请求匿名，跳过来源处理")
+
+        # 处理小尾巴
+        if is_footer_enabled():
+            footer_parts = []
+            bot_username = context.bot.username
+            chat_link = get_chat_link()
+            # 构建频道链接 (跳转到频道信息)
+            channel_info_link = None
+            if isinstance(
+                channel_id_or_username, str
+            ) and channel_id_or_username.startswith("@"):
+                channel_info_link = f"https://t.me/{channel_id_or_username[1:]}"
+            # 对于数字ID的频道，没有标准的直接跳转链接，可以省略或链接到机器人
+            # elif isinstance(channel_id_or_username, int):
+            #     channel_info_link = f"..." # 难构造通用链接
+            if channel_info_link:
+                footer_parts.append(f'<a href="{channel_info_link}">频道</a>')
+            else:
+                footer_parts.append("频道")  # 如果无法链接，只显示文字
+            # 构建投稿链接
+            if bot_username:
+                footer_parts.append(f'<a href="https://t.me/{bot_username}">投稿</a>')
+            # 构建聊天链接
+            if chat_link:
+                footer_parts.append(f'<a href="{chat_link}">聊天</a>')
+            # 如果小尾巴部分不为空，构建小尾巴文本
+            if footer_parts:
+                footer_text = " | ".join(footer_parts)
+                final_extra_content_parts.append("\n\n" + footer_text)  # 直接添加到列表
+                logger.debug("已构建小尾巴内容")
 
         # 合并所有附加内容部分
         final_extra_content = "".join(final_extra_content_parts)

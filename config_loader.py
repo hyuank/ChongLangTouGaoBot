@@ -5,7 +5,7 @@ import os
 import sys
 import logging
 import threading
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,12 @@ def save_config_sync():
             config_to_save.get("BlockedUsers"), list
         ):
             config_to_save["BlockedUsers"] = []
+        if "EnableFooter" not in CONFIG:
+            logger.info("配置文件中未找到 'EnableFooter'，将添加默认值: False。")
+            CONFIG["EnableFooter"] = False
+        if "ChatLink" not in CONFIG:
+            logger.info("配置文件中未找到 'ChatLink'，将添加空字符串。")
+            CONFIG["ChatLink"] = ""
 
         with open(config_path, "w", encoding="utf-8") as f:
             # 使用 json.dump 保存字典，ensure_ascii=False 保证中文正常显示，indent=4 美化格式
@@ -92,6 +98,16 @@ def get_publish_channel_id() -> str | int | None:
     # 返回原始值 (可能是 @username, None, 或已经是 int)
     return channel_id
 
+def is_footer_enabled() -> bool:
+    """检查是否启用小尾巴功能"""
+    return bool(CONFIG.get("EnableFooter", False))
+
+def get_chat_link() -> Optional[str]:
+    """获取自定义聊天链接"""
+    link = CONFIG.get("ChatLink")
+    if link and isinstance(link, str) and link.startswith("https://"):
+        return link
+    return None
 
 def update_config(key: str, value: Any):
     """安全地更新内存中的配置项 (CONFIG 字典)"""
@@ -197,6 +213,8 @@ except FileNotFoundError:
         "Admin": 0,  # 权蛆 User ID
         "Group_ID": 0,  # 审稿群组 Chat ID
         "Publish_Channel_ID": "",  # 发布频道 ID (@username 或 -100...)
+        "EnableFooter": False,  # 是否启用小尾巴功能
+        "ChatLink": "",  # 自定义聊天链接
         "BlockedUsers": [],  # 黑名单用户列表
     }
     try:
