@@ -103,7 +103,7 @@ async def handle_submission_callback(
     # ------------------------------------
 
     if prefix == "sm":
-        # ... (处理单条消息，获取 fwd_msg 和 parsed_forward_origin) ...
+        # 处理单条消息的回调
         try:
             original_msg_id = int(identifier)
             first_original_msg_id = original_msg_id
@@ -145,6 +145,7 @@ async def handle_submission_callback(
                 parsed_forward_origin = origin_info
             # ------------------------------------
         except (ValueError, TelegramError) as e:
+            # 处理转发单条消息时发生的错误
             logger.error(f"单条消息回调转发 {identifier} 失败: {e}")
             try:
                 await query.edit_message_text(
@@ -154,6 +155,7 @@ async def handle_submission_callback(
                 pass
             return
     elif prefix == "mg":
+        # 处理媒体组的回调
         media_group_id = identifier
         pending_group_key = f"pending_group_{button_msg_id}"
         # 确保 chat_data 存在
@@ -230,6 +232,7 @@ async def handle_submission_callback(
             return
 
         try:
+            # --- 将媒体组发送到审核群 ---
             sent_media_group_messages = await context.bot.send_media_group(
                 chat_id=current_group_id, media=media_to_send
             )

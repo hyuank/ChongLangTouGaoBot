@@ -63,6 +63,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         logger.error("process_media_group 任务缺少必要数据！")
         return
 
+    # --- 从 job data 中提取必要信息 ---
     chat_id = job.data["chat_id"]
     media_group_id = job.data["media_group_id"]
     user_id = job.data.get("user_id")
@@ -79,6 +80,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     if chat_data is None:
         chat_data = context.application.chat_data.setdefault(chat_id, {})
 
+    # --- 从 chat data 中获取该媒体组已收集的消息 ---
     media_group_data_key = f"group_{media_group_id}"
     pending_groups_in_chat = chat_data.get(MEDIA_GROUP_CONTEXT_KEY, {})
     collected_messages: list[Message] = pending_groups_in_chat.pop(
@@ -91,6 +93,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"处理媒体组 {media_group_id} 时消息列表为空。")
         return
 
+    # --- 判断投稿是否必须为实名（基于第一条消息的转发来源） ---
     first_message = collected_messages[0]
     is_forward = first_message.forward_origin is not None
     must_be_real = False
@@ -101,6 +104,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         ):
             must_be_real = True
 
+    # --- 构建回复给用户的内联键盘 ---
     first_msg_id = first_message.message_id
     keyboard = []
     callback_prefix = f"mg:{media_group_id}:{first_msg_id}"
@@ -140,6 +144,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         prompt_text += "\n(由于转发来源，只能选择保留来源)"
 
     try:
+        # --- 向用户发送投稿选项 ---
         sent_button_message = await first_message.reply_text(
             text=prompt_text, reply_markup=markup
         )
@@ -174,6 +179,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
             media_group_info_to_store["first_message_forward_origin"] = origin_info
         # ------------------------------------------
 
+        # --- 提取并处理媒体组中的每条消息信息，准备存储 ---
         for msg in collected_messages:
             media_info = {"message_id": msg.message_id}
             caption = msg.caption
@@ -204,6 +210,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 continue
             media_group_info_to_store["messages"].append(media_info)
 
+        # --- 将处理后的媒体组信息暂存到 chat_data，等待用户回调 ---
         if media_group_info_to_store["messages"]:
             chat_data[f"pending_group_{sent_button_message.message_id}"] = (
                 media_group_info_to_store
