@@ -130,7 +130,7 @@ async def post_init(application: Application):
 
 # --- 错误处理器 ---
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """记录和处理 PTB 内部错误，并尝试通知管理员"""
+    """记录和处理 PTB 内部错误，并尝试通知权蛆"""
     logger.error(f"处理更新时发生错误: {context.error}", exc_info=context.error)
 
     admin_id = config_loader.get_admin_id()

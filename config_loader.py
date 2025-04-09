@@ -58,7 +58,7 @@ def get_token() -> str | None:
 
 
 def get_admin_id() -> int | None:
-    """获取管理员用户 ID (权蛆 ID)"""
+    """获取权蛆用户 ID (权蛆 ID)"""
     admin_id = CONFIG.get("Admin")
     try:
         # 尝试将获取到的值转为整数，如果失败或值为 None 则返回 None
@@ -194,7 +194,7 @@ except FileNotFoundError:
     logger.error(f"错误：找不到配置文件 {config_path}。")
     default_config = {
         "Token": "YOUR_BOT_TOKEN",
-        "Admin": 0,  # 管理员 User ID
+        "Admin": 0,  # 权蛆 User ID
         "Group_ID": 0,  # 审稿群组 Chat ID
         "Publish_Channel_ID": "",  # 发布频道 ID (@username 或 -100...)
         "BlockedUsers": [],  # 黑名单用户列表

@@ -1,6 +1,6 @@
 # handlers/command.py
 
-"""处理通用命令和管理员命令"""
+"""处理通用命令和权蛆命令"""
 
 import logging
 import telegram  # 需要导入 telegram 以获取 __version__
@@ -53,12 +53,14 @@ ADMIN_HELP_TEXT = """
 async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理通用命令、权蛆命令和帮助命令"""
     if not update.message or not update.message.text or not update.message.from_user:
+        # 如果消息无效或缺少必要信息，则忽略
         return
 
     message = update.message
     user = message.from_user
     command_text = message.text.lower()
     command_parts = command_text.split()
+    # 提取命令本身，去除可能的 @botusername 后缀
     command = command_parts[0].split("@")[0][1:]
 
     # --- 通用命令 ---
@@ -101,15 +103,17 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
         return
     # ---------------------------
 
-    # --- 权蛆命令 ---
-    admin_id_local = get_admin_id()
-    if user.id == admin_id_local:
+    # --- 权蛆命令处理逻辑 ---
+    admin_id_local = get_admin_id() # 获取权蛆ID
+    if user.id == admin_id_local: # 验证用户是否为权蛆
         current_group_id_local = get_group_id()
 
+        # 设置审稿群命令
         if command == "setgroup":
+            # 确保命令在群组或超级群组中执行
             if message.chat.type in ["group", "supergroup"]:
-                update_config("Group_ID", message.chat_id)
-                await save_config_async()
+                update_config("Group_ID", message.chat_id) # 更新配置中的群组ID
+                await save_config_async() # 异步保存配置
                 await message.reply_text(
                     f"✅ 已设置本群 ({message.chat.title}) 为审稿群。"
                 )
@@ -120,22 +124,26 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                 await message.reply_text("❌ 此命令只能在群组中使用。")
             return
 
+        # 设置发布频道命令
         if command == "setchannel":
+            # 检查命令格式是否正确 (包含参数且参数为 @用户名 或 数字ID)
             if len(command_parts) > 1 and (
                 command_parts[1].startswith("@")
-                or command_parts[1].replace("-", "").isdigit()
+                or command_parts[1].replace("-", "").isdigit() # 允许负数ID
             ):
                 channel_id_str = command_parts[1]
                 try:
+                    # 尝试将输入转换为整数ID，如果失败则假定为用户名
                     try:
                         channel_id_to_check = int(channel_id_str)
                     except ValueError:
                         channel_id_to_check = channel_id_str
 
+                    # 使用 bot API 获取频道信息以验证其有效性
                     chat = await context.bot.get_chat(chat_id=channel_id_to_check)
-                    if chat.type == "channel":
-                        update_config("Publish_Channel_ID", channel_id_to_check)
-                        await save_config_async()
+                    if chat.type == "channel": # 确认获取到的聊天是频道类型
+                        update_config("Publish_Channel_ID", channel_id_to_check) # 更新配置
+                        await save_config_async() # 保存配置
                         await message.reply_text(
                             f"✅ 已设置发布频道为 {chat.title} ({channel_id_to_check})。请确保机器人是该频道的权蛆！"
                         )
@@ -146,37 +154,42 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                         await message.reply_text(
                             f"❌ '{channel_id_str}' 不是一个有效的频道。"
                         )
-                except TelegramError as e:
+                except TelegramError as e: # 处理 Telegram API 可能抛出的错误
                     await message.reply_text(
                         f"❌ 无法验证频道 '{channel_id_str}'。错误: {e}."
                     )
-                except Exception as e:
+                except Exception as e: # 处理其他可能的未知错误
                     await message.reply_text(f"❌ 验证频道时发生未知错误: {e}")
-            else:
+            else: # 参数格式错误
                 await message.reply_text(
                     "❌ 使用方法: /setchannel @频道用户名 或 /setchannel -100xxxxxxxxxx"
                 )
             return
 
+        # 显示状态命令
         if command == "status":
+            # 获取并格式化审稿群信息
             group_info = "未设置"
             if current_group_id_local:
                 try:
                     chat = await context.bot.get_chat(current_group_id_local)
                     group_info = f"{chat.title} ({current_group_id_local})"
-                except Exception:
+                except Exception as e: # 如果获取群组信息失败，则只显示ID
+                    logger.warning(f"获取审稿群信息失败 (ID: {current_group_id_local}): {e}")
                     group_info = f"ID: {current_group_id_local} (无法获取名称)"
 
+            # 获取并格式化发布频道信息
             channel_info = "未设置"
-            channel_id_local = get_publish_channel_id()  # 使用局部变量
+            channel_id_local = get_publish_channel_id()
             if channel_id_local:
                 try:
                     chat = await context.bot.get_chat(channel_id_local)
                     channel_info = f"{chat.title} ({channel_id_local})"
-                except Exception:
+                except Exception as e: # 如果获取频道信息失败，则只显示ID或用户名
+                    logger.warning(f"获取发布频道信息失败 (ID/Username: {channel_id_local}): {e}")
                     channel_info = f"ID/Username: {channel_id_local} (无法获取名称)"
 
-            bot_user = await context.bot.get_me()
+            bot_user = await context.bot.get_me() # 获取机器人自身信息
             await message.reply_text(
                 f"⚙️ 当前状态:\n"
                 f"Bot ID: {bot_user.id}\n"
@@ -184,11 +197,11 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                 f"权蛆 ID: {admin_id_local}\n"
                 f"审稿群: {group_info}\n"
                 f"发布频道: {channel_info}\n"
-                f"待处理投稿数: {get_pending_submission_count()}\n"
+                f"待处理投稿数: {get_pending_submission_count()}\n" # 从 data_manager 获取待处理数量
                 f"黑名单用户数: {len(get_blocked_users())}"  # 显示黑名单数量
             )
             return
-    # 如果非权蛆尝试权蛆命令
+    # 如果非权蛆尝试使用权蛆命令
     elif command in ["setgroup", "setchannel", "status"]:
         await message.reply_text("❌ 您无权使用此命令。")
         return

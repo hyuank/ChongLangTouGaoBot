@@ -627,7 +627,7 @@ async def post_submission(
             try:
                 await bot.send_message(
                     chat_id=submitter_id_int,
-                    text="ℹ️ 您的稿件已通过审核，但在发布时遇到技术问题，请稍后查看频道或联系管理员。",
+                    text="ℹ️ 您的稿件已通过审核，但在发布时遇到技术问题，请稍后查看频道或联系权蛆。",
                     reply_to_message_id=original_msg_id,
                     allow_sending_without_reply=True,
                 )
