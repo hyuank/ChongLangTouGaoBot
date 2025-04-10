@@ -49,7 +49,10 @@ PWS_HELP_TEXT = """
 <code>/status</code> - (权蛆) 显示机器人状态。
 <code>/setgroup</code> - (权蛆，群内) 设置当前群为审核群。
 <code>/setchannel ID或用户名</code> - (权蛆) 设置发布频道。(例如: <code>/setchannel @mychannel</code> 或 <code>/setchannel -100123...</code>)
-<code>/setchatlink 链接</code> - (权蛆) 设置小尾巴中的“聊天”链接。(例如: <code>/setchatlink https://t.me/your_chat</code>)
+<code>/setchatlink [链接]</code> - (权蛆) 设置小尾巴中的“聊天”链接。(例如: <code>/setchatlink https://t.me/your_chat</code>)
+<code>/setemoji [类型] [Emoji]</code> - (权蛆) 设置小尾巴链接的 Emoji。
+  类型: <code>submission</code>, <code>channel</code>, <code>chat</code>
+  示例: <code>/setemoji submission 💬</code>
 """
 
 
@@ -96,13 +99,15 @@ async def get_submission_details(
                     # 检查记录的媒体组转发 ID 列表是否包含当前回复的消息 ID
                     and reply_to_msg_id in value.get("media_group_fwd_ids", [])
                 ):
-                    found_key = key # 找到了包含此消息的媒体组主记录
+                    found_key = key  # 找到了包含此消息的媒体组主记录
                     logger.debug(f"通过媒体组 ID 找到主记录 Key: {found_key}")
                     break  # 找到就跳出循环
         # 如果通过遍历找到了媒体组的主记录 Key
         if found_key:
             submission_key = found_key  # 更新 submission_key 为主记录的 key
-            submission_info = get_submission(submission_key)  # 重新使用主 key 获取投稿信息
+            submission_info = get_submission(
+                submission_key
+            )  # 重新使用主 key 获取投稿信息
     # --- 媒体组查找结束 ---
 
     if not submission_info:
@@ -138,13 +143,13 @@ async def handle_review_command(
             f"❌ 请回复一条投稿消息来使用 <code>/{command_name}</code> 命令。",
             parse_mode=ParseMode.HTML,
         )
-        return None, None, None, None, None, None # 返回空值表示验证失败
+        return None, None, None, None, None, None  # 返回空值表示验证失败
 
     # 2. 获取执行命令的审稿人
     editor = update.message.from_user
     if not editor:
         logger.warning(f"无法获取命令 {command_name} 的执行者信息。")
-        return None, None, None, None, None, None # 如果无法获取审稿人信息则失败
+        return None, None, None, None, None, None  # 如果无法获取审稿人信息则失败
 
     # 3. 获取投稿详情
     # --- 修正调用点：传入 context ---
@@ -159,22 +164,26 @@ async def handle_review_command(
 
     # 4. 检查是否成功获取投稿信息
     if not submission_key or not submission_info:
-        logger.warning(f"/{command_name} 命令无法找到有效的投稿记录 (key: {submission_key}) 或回复的消息无效。")
+        logger.warning(
+            f"/{command_name} 命令无法找到有效的投稿记录 (key: {submission_key}) 或回复的消息无效。"
+        )
         # get_submission_details 内部可能已回复，这里可以不再回复
         # (考虑: 是否需要告知用户找不到记录?)
-        return None, None, None, None, None, None # 验证失败
+        return None, None, None, None, None, None  # 验证失败
 
     # 5. 检查稿件是否已处理 (ban/unban 命令除外)
     if submission_info.get("posted", False) and command_name not in ["ban", "unban"]:
         status_text = submission_info.get("status", "已处理")
         await update.message.reply_text(f"ℹ️ 此稿件已被处理 (状态: {status_text})。")
-        return None, None, None, None, None, None # 验证失败 (稿件已处理)
+        return None, None, None, None, None, None  # 验证失败 (稿件已处理)
 
     # 6. 检查是否存在投稿人 ID (所有命令都需要)
     if not sender_id:
-        logger.error(f"命令 /{command_name} 无法获取稿件 {submission_key} 的投稿人 ID。")
+        logger.error(
+            f"命令 /{command_name} 无法获取稿件 {submission_key} 的投稿人 ID。"
+        )
         await update.message.reply_text("❌ 无法获取投稿人 ID，无法执行此操作。")
-        return None, None, None, None, None, None # 验证失败 (缺少投稿人ID)
+        return None, None, None, None, None, None  # 验证失败 (缺少投稿人ID)
 
     # 7. 检查投稿人是否被阻止 (仅对需要交互的命令)
     if command_name in ["ok", "no", "re", "echo"]:
@@ -184,7 +193,7 @@ async def handle_review_command(
                 f"⚠️ 投稿人 {sender_id} 已被阻止，无法执行 <code>/{command_name}</code> 操作。请先 /unban。",
                 parse_mode=ParseMode.HTML,
             )
-            return None, None, None, None, None, None # 验证失败 (用户被阻止)
+            return None, None, None, None, None, None  # 验证失败 (用户被阻止)
 
     # 8. 获取命令参数
     args = context.args
@@ -222,7 +231,9 @@ async def pwshelp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 .replace("</code>", "`")
                 .replace("<b>", "")
                 .replace("</b>", "")
-                .replace("<", "<") # 注意: < 和 > 可能仍需转义，取决于 TG 如何处理纯文本
+                .replace(
+                    "<", "<"
+                )  # 注意: < 和 > 可能仍需转义，取决于 TG 如何处理纯文本
                 .replace(">", ">")
             )
             try:
@@ -245,7 +256,7 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         submission_info,
         sender_id,
         original_msg_id,
-        comment, # /ok 命令的参数作为评论文本
+        comment,  # /ok 命令的参数作为评论文本
     ) = await handle_review_command(update, context, "ok")
     # 如果验证失败或信息不完整，则直接返回
     if not editor or not submission_info:
@@ -261,7 +272,9 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 根据发布结果向审稿人发送确认消息
     if post_result:
-        submission_type = submission_info.get("type", "未知") # 获取投稿类型（实名/匿名）
+        submission_type = submission_info.get(
+            "type", "未知"
+        )  # 获取投稿类型（实名/匿名）
         confirmation_text = f"✅ 稿件已作为 '{submission_type}' 类型发布。"
         # 判断原始投稿是否为纯文本或贴纸
         is_text_or_sticker = reply_to_msg.text or reply_to_msg.sticker
@@ -306,7 +319,7 @@ async def re_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         submission_info,
         sender_id,
         original_msg_id,
-        reply_text, # /re 命令的参数作为首次回复内容
+        reply_text,  # /re 命令的参数作为首次回复内容
     ) = await handle_review_command(update, context, "re")
     # 如果验证失败或信息不完整，则直接返回
     if not editor or not submission_info:
@@ -432,7 +445,7 @@ async def handle_review_group_message(
         return
 
     message = update.message
-    editor = message.from_user # 获取发送消息的审稿人
+    editor = message.from_user  # 获取发送消息的审稿人
 
     # 从当前审稿人的 user_data 中获取回复会话的目标用户 ID 和原始消息 ID
     reply_target_id = context.user_data.get("reply_session_target_id")
@@ -445,7 +458,7 @@ async def handle_review_group_message(
             await message.reply_text(
                 f"⚠️ 无法继续回复，用户 {reply_target_id} 已被阻止。请使用 /unre。"
             )
-            return # 阻止继续发送
+            return  # 阻止继续发送
 
         # 获取消息的文本内容
         text_content = message.text
@@ -455,11 +468,11 @@ async def handle_review_group_message(
             await message.reply_text(
                 "ℹ️ 回复模式下暂不支持直接发送媒体文件，请使用文字回复。"
             )
-            return # 忽略此消息
+            return  # 忽略此消息
         # 如果消息没有文本内容也没有附件 (例如空消息或仅含格式的消息)
         elif not text_content:
             logger.debug("忽略空的 /re 会话消息")
-            return # 忽略此消息
+            return  # 忽略此消息
 
         # 将审稿人的文本消息通过 posting 模块转发给投稿人
         success = await reply_to_submitter(
@@ -471,12 +484,12 @@ async def handle_review_group_message(
             # 提示发送失败，可能是因为用户已阻止机器人
             await message.reply_text(
                 "⚠️ (消息发送给用户失败，可能已被对方阻止)",
-                quote=False, # 不引用审稿人的原消息
-                disable_notification=True, # 尝试不发出通知音
+                quote=False,  # 不引用审稿人的原消息
+                disable_notification=True,  # 尝试不发出通知音
             )
         # else: # 成功时可以不提示，避免刷屏
         #     await message.reply_text("✅ (已发送)", quote=False, disable_notification=True)
-        return # 处理完毕，这是 /re 会话消息
+        return  # 处理完毕，这是 /re 会话消息
 
     # 如果当前审稿人没有处于 /re 会话中，则忽略这条普通消息
     logger.debug(
@@ -495,8 +508,8 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
     # 尽快应答回调，避免按钮一直转圈
     await query.answer()
 
-    user = query.from_user # 获取点击按钮的用户 (审稿人)
-    message = query.message # 获取包含按钮的消息
+    user = query.from_user  # 获取点击按钮的用户 (审稿人)
+    message = query.message  # 获取包含按钮的消息
 
     # 2. 验证按钮消息是否是回复了某条消息 (预期是回复原始投稿)
     if not message.reply_to_message:
@@ -536,7 +549,9 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         try:
             # 尝试编辑按钮消息告知错误
-            await query.edit_message_text(f"❌ 操作失败：找不到该投稿记录 ({submission_key})。")
+            await query.edit_message_text(
+                f"❌ 操作失败：找不到该投稿记录 ({submission_key})。"
+            )
         except TelegramError as e:
             logger.error(f"编辑按钮消息以提示找不到记录失败: {e}")
         return
@@ -550,11 +565,13 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     # 6. 检查是否存在投稿人 ID
     if not sender_id:
-        logger.error(f"无法处理审稿群按钮回调 {query.data} (稿件 {submission_key})：缺少有效的投稿人 ID。")
+        logger.error(
+            f"无法处理审稿群按钮回调 {query.data} (稿件 {submission_key})：缺少有效的投稿人 ID。"
+        )
         try:
             await query.edit_message_text("❌ 操作失败：缺少投稿人信息。")
         except TelegramError as e:
-             logger.error(f"编辑按钮消息以提示缺少投稿人信息失败: {e}")
+            logger.error(f"编辑按钮消息以提示缺少投稿人信息失败: {e}")
         return
 
     # 7. 检查投稿人是否在黑名单中
@@ -565,7 +582,7 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
-    editor = user # 确认操作者
+    editor = user  # 确认操作者
 
     # --- 根据回调数据 (query.data) 执行不同的操作 ---
 
@@ -581,7 +598,12 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
             # post_submission 内部会修改按钮状态
         else:
             # 类型不符，提示审稿人状态可能已变，建议用命令
-            await query.answer("⚠️ 按钮类型 ('real') 与记录 ('{}') 不符，建议使用 /ok 命令。".format(submission_info.get("type")), show_alert=True)
+            await query.answer(
+                "⚠️ 按钮类型 ('real') 与记录 ('{}') 不符，建议使用 /ok 命令。".format(
+                    submission_info.get("type")
+                ),
+                show_alert=True,
+            )
 
     # 如果点击的是"匿名接收"按钮
     elif query.data == "receive:anonymous":
@@ -594,7 +616,12 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
             )
         else:
             # 类型不符提示
-            await query.answer("⚠️ 按钮类型 ('anonymous') 与记录 ('{}') 不符，建议使用 /ok 命令。".format(submission_info.get("type")), show_alert=True)
+            await query.answer(
+                "⚠️ 按钮类型 ('anonymous') 与记录 ('{}') 不符，建议使用 /ok 命令。".format(
+                    submission_info.get("type")
+                ),
+                show_alert=True,
+            )
 
     # 如果点击的是"拒绝"按钮
     elif query.data == "reject:submission":

@@ -24,6 +24,7 @@ from config_loader import (
     get_group_id,
     is_footer_enabled,
     get_chat_link,
+    get_footer_emojis,
 )
 from data_manager import update_submission_status, save_data_async, add_submission
 
@@ -235,6 +236,7 @@ async def post_submission(
             footer_parts = []
             bot_username = context.bot.username
             chat_link = get_chat_link()
+            emojis = get_footer_emojis()
             # 构建频道链接 (跳转到频道信息)
             channel_info_link = None
             if isinstance(
@@ -244,21 +246,31 @@ async def post_submission(
             # 对于数字ID的频道，没有标准的直接跳转链接，可以省略或链接到机器人
             # elif isinstance(channel_id_or_username, int):
             #     channel_info_link = f"..." # 难构造通用链接
-            if channel_info_link:
-                footer_parts.append(f'<a href="{channel_info_link}">频道</a>')
-            else:
-                footer_parts.append("频道")  # 如果无法链接，只显示文字
+            submission_emoji = emojis.get("submission", "👊")
+            channel_emoji = emojis.get("channel", "🌊")
+            chat_emoji = emojis.get("chat", "🔥")
             # 构建投稿链接
             if bot_username:
-                footer_parts.append(f'<a href="https://t.me/{bot_username}">投稿</a>')
+                footer_parts.append(
+                    f'<a href="https://t.me/{bot_username}">{submission_emoji}投稿</a>'
+                )
+            # 构建频道链接
+            if channel_info_link:
+                footer_parts.append(
+                    f'<a href="{channel_info_link}">{channel_emoji}频道</a>'
+                )
+            else:
+                footer_parts.append(
+                    f"{channel_emoji}频道"
+                )  # 如果无法链接，只显示文字和emoji
             # 构建聊天链接
             if chat_link:
-                footer_parts.append(f'<a href="{chat_link}">聊天</a>')
+                footer_parts.append(f'<a href="{chat_link}">{chat_emoji}聊天</a>')
             # 如果小尾巴部分不为空，构建小尾巴文本
             if footer_parts:
-                footer_text = " | ".join(footer_parts)
+                footer_text = " ".join(footer_parts)
                 final_extra_content_parts.append("\n\n" + footer_text)  # 直接添加到列表
-                logger.debug("已构建小尾巴内容")
+                logger.debug("已构建带 Emoji 的小尾巴内容")
 
         # 合并所有附加内容部分
         final_extra_content = "".join(final_extra_content_parts)

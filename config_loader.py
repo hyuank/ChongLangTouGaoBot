@@ -38,6 +38,17 @@ def save_config_sync():
         if "ChatLink" not in CONFIG:
             logger.info("配置文件中未找到 'ChatLink'，将添加空字符串。")
             CONFIG["ChatLink"] = ""
+        default_emojis = {"submission": "👊", "channel": "🌊", "chat": "🔥"}
+        if "FooterEmojis" not in CONFIG or not isinstance(
+            CONFIG.get("FooterEmojis"), dict
+        ):
+            logger.info("配置文件中未找到或格式错误 'FooterEmojis'，将添加默认值。")
+            CONFIG["FooterEmojis"] = default_emojis.copy()
+        else:
+            # 确保默认的键存在
+            for key, value in default_emojis.items():
+                if key not in CONFIG["FooterEmojis"]:
+                    CONFIG["FooterEmojis"][key] = value
 
         with open(config_path, "w", encoding="utf-8") as f:
             # 使用 json.dump 保存字典，ensure_ascii=False 保证中文正常显示，indent=4 美化格式
@@ -98,9 +109,11 @@ def get_publish_channel_id() -> str | int | None:
     # 返回原始值 (可能是 @username, None, 或已经是 int)
     return channel_id
 
+
 def is_footer_enabled() -> bool:
     """检查是否启用小尾巴功能"""
     return bool(CONFIG.get("EnableFooter", False))
+
 
 def get_chat_link() -> Optional[str]:
     """获取自定义聊天链接"""
@@ -109,11 +122,26 @@ def get_chat_link() -> Optional[str]:
         return link
     return None
 
+
 def update_config(key: str, value: Any):
     """安全地更新内存中的配置项 (CONFIG 字典)"""
     logger.debug(f"更新配置: {key} = {value}")
     CONFIG[key] = value
     # 注意：此函数只更新内存，需要显式调用 save_config_async() 或 save_config_sync() 来持久化
+
+
+def get_footer_emojis() -> Dict[str, str]:
+    """获取小尾巴 Emoji 配置字典"""
+    # 返回副本以防外部修改
+    emojis = CONFIG.get(
+        "FooterEmojis", {"submission": "👊", "channel": "🌊", "chat": "🔥"}
+    )
+    # 确保返回的是字典
+    return (
+        emojis.copy()
+        if isinstance(emojis, dict)
+        else {"submission": "👊", "channel": "🌊", "chat": "🔥"}
+    )
 
 
 # --- 黑名单管理函数 ---
@@ -215,6 +243,11 @@ except FileNotFoundError:
         "Publish_Channel_ID": "",  # 发布频道 ID (@username 或 -100...)
         "EnableFooter": False,  # 是否启用小尾巴功能
         "ChatLink": "",  # 自定义聊天链接
+        "FooterEmojis": {
+            "submission": "👊",
+            "channel": "🌊",
+            "chat": "🔥",
+        },  # 小尾巴表情
         "BlockedUsers": [],  # 黑名单用户列表
     }
     try:

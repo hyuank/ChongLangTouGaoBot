@@ -19,6 +19,7 @@ from config_loader import (
     save_config_async,
     get_chat_link,
     is_footer_enabled,
+    get_footer_emojis,
     get_blocked_users,
 )
 from data_manager import get_pending_submission_count
@@ -45,7 +46,10 @@ ADMIN_HELP_TEXT = """
 <code>/status</code> - 显示机器人当前配置状态。
 <code>/setgroup</code> - (在目标群组内使用) 将当前群组设置为审稿群。
 <code>/setchannel ID或用户名</code> - 设置发布频道 (例如: <code>@channel_name</code> 或 <code>-100123...</code>)。
-<code>/setchatlink 链接</code> - 设置小尾巴中的“聊天”链接 (例如: <code>/setchatlink https://t.me/your_chat</code>)。
+<code>/setchatlink [链接]</code> - 设置小尾巴中的“聊天”链接 (例如: <code>/setchatlink https://t.me/your_chat</code>)。
+<code>/setemoji [类型] [Emoji]</code> - 设置小尾巴链接前的 Emoji。
+  类型: <code>submission</code>, <code>channel</code>, <code>chat</code>
+  示例: <code>/setemoji submission 💬</code>
 
 <b>审核群指令:</b>
 (请在审核群内使用 <code>/pwshelp</code> 获取详细指令)
@@ -186,6 +190,39 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                 )
             return
 
+        # 设置小尾巴 Emoji 命令
+        if command == "setemoji":
+            valid_types = ["submission", "channel", "chat"]
+            if len(command_parts) == 3 and command_parts[1] in valid_types:
+                emoji_type = command_parts[1]
+                new_emoji = command_parts[2]
+                # 验证 emoji 是否为单个字符或带变体选择符的 emoji (这里由于杜蛆对botapi的限制导致无法发送大会员专属的变体emoji，显示效果和未变体emoji一致)
+                if len(new_emoji) == 1 or (
+                    len(new_emoji) > 1 and "\ufe0f" in new_emoji
+                ):
+                    current_emojis = get_footer_emojis()  # 获取当前字典
+                    current_emojis[emoji_type] = new_emoji  # 更新值
+                    update_config(
+                        "FooterEmojis", current_emojis
+                    )  # 更新整个字典到 CONFIG
+                    await save_config_async()
+                    await message.reply_text(
+                        f"✅ 已设置 {emoji_type} 的 Emoji 为: {new_emoji}"
+                    )
+                    logger.info(
+                        f"管理员 {user.name} 设置 {emoji_type} Emoji 为 {new_emoji}"
+                    )
+                else:
+                    await message.reply_text("❌ 无效的 Emoji。请提供单个 Emoji 字符。")
+            else:
+                current_emojis = get_footer_emojis()
+                await message.reply_text(
+                    "❌ 使用方法: `/setemoji <类型> <Emoji>`\n"
+                    "类型可选: `submission`, `channel`, `chat`\n"
+                    f"当前设置: 投稿={current_emojis.get('submission', '')} 频道={current_emojis.get('channel', '')} 聊天={current_emojis.get('chat', '')}"
+                )
+            return
+
         # 显示状态命令
         if command == "status":
             # 获取并格式化审稿群信息
@@ -214,6 +251,7 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                     channel_info = f"ID/Username: {channel_id_local} (无法获取名称)"
 
             bot_user = await context.bot.get_me()  # 获取机器人自身信息
+            current_emojis = get_footer_emojis()  # 获取当前小尾巴 Emoji
             await message.reply_text(
                 f"⚙️ 当前状态:\n"
                 f"Bot ID: {bot_user.id}\n"
@@ -223,6 +261,7 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                 f"发布频道: {channel_info}\n"
                 f"小尾巴启用: {'是' if is_footer_enabled() else '否'}\n"
                 f"聊天链接: {get_chat_link() or '未设置'}\n"
+                f"小尾巴 Emojis: 投稿={current_emojis.get('submission', '')} 频道={current_emojis.get('channel', '')} 聊天={current_emojis.get('chat', '')}\n"
                 f"待处理投稿数: {get_pending_submission_count()}\n"
                 f"黑名单用户数: {len(get_blocked_users())}"
             )
