@@ -81,17 +81,27 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         chat_data = context.application.chat_data.setdefault(chat_id, {})
 
     # --- 从 chat data 中获取该媒体组已收集的消息 ---
+    collected_messages = None
     media_group_data_key = f"group_{media_group_id}"
-    pending_groups_in_chat = chat_data.get(MEDIA_GROUP_CONTEXT_KEY, {})
-    collected_messages: list[Message] = pending_groups_in_chat.pop(
-        media_group_data_key, []
-    )  # 指定类型
+    if MEDIA_GROUP_CONTEXT_KEY in chat_data:
+        pending_groups_in_chat = chat_data.get(MEDIA_GROUP_CONTEXT_KEY, {})
+        collected_messages = pending_groups_in_chat.pop(media_group_data_key, None)
+        logger.info(
+            f"尝试 pop 媒体组 '{media_group_data_key}': {'成功获取数据' if collected_messages else '数据已被处理或不存在'}"
+        )
+        if not pending_groups_in_chat:
+            chat_data.pop(MEDIA_GROUP_CONTEXT_KEY, None)
 
-    if not pending_groups_in_chat:
-        chat_data.pop(MEDIA_GROUP_CONTEXT_KEY, None)
     if not collected_messages:
-        logger.warning(f"处理媒体组 {media_group_id} 时消息列表为空。")
-        return
+        logger.warning(
+            f"处理媒体组 {media_group_id} 时未能获取到消息列表 (已被处理或数据错误)。"
+        )
+        return  # 获取不到数据就直接退出
+
+    # --- 如果执行到这里，说明当前实例成功获取了数据，继续处理 ---
+    logger.info(
+        f"成功获取到媒体组 {media_group_id} 的 {len(collected_messages)} 条消息，继续处理..."
+    )
 
     # --- 判断投稿是否必须为实名（基于第一条消息的转发来源） ---
     first_message = collected_messages[0]
@@ -144,18 +154,12 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         prompt_text += "\n(由于转发来源，只能选择保留来源)"
 
     try:
-        # --- 向用户发送投稿选项 ---
-        sent_button_message = await first_message.reply_text(
-            text=prompt_text, reply_markup=markup
-        )
-        logger.info(
-            f"向用户 {user_name} ({user_id}) 发送媒体组 {media_group_id} 的投稿类型选择"
-        )
+        # --- 构建存储信息 ---
         media_group_info_to_store = {
             "media_group_id": media_group_id,
             "messages": [],
             "is_forward": is_forward,
-            # --- 新增：存储第一条消息的转发来源信息 ---
+            # --- 存储第一条消息的转发来源信息 ---
             "first_message_forward_origin": None,  # 默认为 None
         }
         if is_forward and first_message.forward_origin:
@@ -237,14 +241,15 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"发送无支持媒体通知失败: {e}")
             return  # 结束任务
 
-        # --- 将处理后的媒体组信息暂存到 chat_data，等待用户回调 ---
+        # --- 发送按钮消息 ---
         sent_button_message = await first_message.reply_text(
             text=prompt_text, reply_markup=markup
         )
         logger.info(
             f"向用户 {user_name} ({user_id}) 发送媒体组 {media_group_id} 的投稿类型选择"
         )
-
+        # --- 将处理后的媒体组信息暂存到 chat_data，等待用户回调 ---
+        # 注意：这里存储的 key 是 button_msg_id，与 pop 用的 key 不同
         chat_data[f"pending_group_{sent_button_message.message_id}"] = (
             media_group_info_to_store
         )
