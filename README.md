@@ -44,16 +44,22 @@
     ```
 
 4.  **配置 `config.json`**:
-    *   至少填写以下必要信息：
+    *   需要填写必填信息：
         ```json
         {
-            "Token": "YOUR_BOT_TOKEN", // 从 BotFather 获取
-            "Admin": 123456789,        // 你的 Telegram User ID (机器人权蛆)
-            "Group_ID": 0,             // 初始为 0，启动后由权蛆在群内使用 /setgroup 设置
-            "Publish_Channel_ID": "",  // 初始为空，启动后由权蛆使用 /setchannel 设置
-            "EnableFooter": false,     // 控制频道稿件后是否添加小尾巴，当为true则开启，默认关闭
-            "ChatLink": "",            // 初始为空，启动后由权蛆使用 /setchatlink 设置
-            "BlockedUsers": []         // 黑名单，默认为空
+            "Token": "YOUR_BOT_TOKEN", // 从 BotFather 获取 (必填)
+            "Admin": 123456789,        // 你的 Telegram User ID (机器人管理员) (必填)
+            "Group_ID": 0,             // 初始为 0，启动后由管理员在群内使用 /setgroup 设置
+            "Publish_Channel_ID": "",  // 初始为空，启动后由管理员使用 /setchannel 设置
+            "ID": 0,                   // 初始为 0，第一次启动后机器人会自动记录
+            "Username": "",            // 初始为空，第一次启动后机器人会自动记录
+            "EnableFooter": true,      // 是否启用小尾巴
+            "ChatLink": "",            // 小尾巴中的“聊天”链接
+            "BlockedUsers": [],        // 黑名单，默认为空
+            "FooterEmojis": {
+                "submission": "👊",   // 投稿小尾巴链接前的 Emoji
+                "channel": "🌊",      // 频道小尾巴链接前的 Emoji
+                "chat": "🔥"          // 聊天小尾巴链接前的 Emoji
         }
         ```
     *   确保 `config.json` 文件具有正确的读取权限。
