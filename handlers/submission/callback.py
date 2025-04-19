@@ -329,6 +329,10 @@ async def handle_submission_callback(
             reply_to_message_id=first_fwd_msg.message_id,
             reply_markup=markup,
             parse_mode=ParseMode.HTML,
+            read_timeout=30,  # 增加读取超时时间
+            write_timeout=30,  # 增加写入超时时间
+            connect_timeout=30,  # 增加连接超时时间
+            pool_timeout=30,  # 增加池超时时间
         )
         submission_data_for_storage["Markup_ID"] = markup_msg.message_id
         logger.info(
@@ -358,7 +362,18 @@ async def handle_submission_callback(
         logger.error(
             f"在审稿群 {current_group_id} 发送处理选项失败 for {submission_key}: {e}"
         )
+
+        # 即使发送处理选项失败，也保存投稿信息
+        submission_data_for_storage["Markup_ID"] = None  # 标记为没有处理按钮消息
+        submission_data_for_storage["pending_markup"] = True  # 标记为待处理
+
+        add_submission(submission_key, submission_data_for_storage)  # 保存投稿信息
+        logger.info(f"尽管发送处理选项失败，仍然保存了投稿 {submission_key} 的信息")
+        await save_data_async()
+
         try:
-            await query.edit_message_text(f"❌ 发送稿件至审稿群时出错: {e}")
+            await query.edit_message_text(
+                f"⚠️ 发送稿件至审稿群时触发了杜蛆对机器人API的速率限制: {e}\n但投稿已成功转发到审核群，管理员稍后将处理您的投稿。"
+            )
         except TelegramError:
             pass

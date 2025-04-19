@@ -544,17 +544,74 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     # 4. 检查是否成功获取投稿信息
     if not submission_info:
+        group_id = get_group_id()
+        first_msg_id = original_submission_msg.message_id
+        # 尝试直接使用被回复消息的ID构建key
+        direct_key = f"{group_id}:{first_msg_id}"
         logger.warning(
-            f"审稿群按钮回调，但投稿信息 {submission_key} 不存在。Callback data: {query.data}"
+            f"审稿群按钮回调，但投稿信息 {submission_key} 不存在。尝试直接查找 {direct_key}。Callback data: {query.data}"
         )
-        try:
-            # 尝试编辑按钮消息告知错误
-            await query.edit_message_text(
-                f"❌ 操作失败：找不到该投稿记录 ({submission_key})。"
-            )
-        except TelegramError as e:
-            logger.error(f"编辑按钮消息以提示找不到记录失败: {e}")
-        return
+
+        # 直接尝试查找被回复消息的记录
+        direct_submission_info = get_submission(direct_key)
+
+        if direct_submission_info:
+            # 找到了直接记录
+            logger.info(f"找到了直接记录 {direct_key}，继续处理")
+            submission_key = direct_key
+            submission_info = direct_submission_info
+            sender_id = direct_submission_info.get("Sender_ID")
+            original_msg_id = direct_submission_info.get("Original_MsgID")
+
+            # 更新Markup_ID，因为现在我们知道了正确的按钮消息ID
+            if direct_submission_info.get(
+                "pending_markup"
+            ) and not direct_submission_info.get("Markup_ID"):
+                direct_submission_info["Markup_ID"] = message.message_id
+                direct_submission_info["pending_markup"] = False
+                logger.info(
+                    f"更新了投稿 {direct_key} 的Markup_ID为 {message.message_id}"
+                )
+                await save_data_async()
+        else:
+            # 遍历查找同一群组中的所有投稿记录，检查是否有媒体组包含当前消息ID
+            found_key = None
+            found_info = None
+
+            with data_manager.DATA_LOCK:
+                for key, info in data_manager.submission_list.items():
+                    if key.startswith(f"{group_id}:") and info.get("is_media_group"):
+                        # 检查媒体组转发ID列表是否包含当前回复的消息ID
+                        if first_msg_id in info.get("media_group_fwd_ids", []):
+                            found_key = key
+                            found_info = info
+                            logger.info(f"通过媒体组列表找到了投稿记录: {found_key}")
+                            break
+
+            if found_key and found_info:
+                submission_key = found_key
+                submission_info = found_info
+                sender_id = found_info.get("Sender_ID")
+                original_msg_id = found_info.get("Original_MsgID")
+
+                # 更新Markup_ID（如果需要）
+                if found_info.get("pending_markup") and not found_info.get("Markup_ID"):
+                    found_info["Markup_ID"] = message.message_id
+                    found_info["pending_markup"] = False
+                    logger.info(
+                        f"更新了投稿 {found_key} 的Markup_ID为 {message.message_id}"
+                    )
+                    await save_data_async()
+            else:
+                # 仍然找不到，返回错误
+                try:
+                    # 尝试编辑按钮消息告知错误
+                    await query.edit_message_text(
+                        f"❌ 操作失败：找不到该投稿记录 ({submission_key})。"
+                    )
+                except TelegramError as e:
+                    logger.error(f"编辑按钮消息以提示找不到记录失败: {e}")
+                return
 
     # 5. 检查稿件是否已被处理
     if submission_info.get("posted", False):
