@@ -42,6 +42,7 @@ try:
         ban_command,
         unban_command,
         unre_command,
+        warn_command,
     )
 
     # --------------------
@@ -284,6 +285,12 @@ def main():
             CommandHandler(
                 "unre", unre_command, filters=review_cmd_filters
             ),  # 结束回复会话
+            group=GROUP_COMMANDS,
+        )
+        application.add_handler(
+            CommandHandler(
+                "warn", warn_command, filters=review_cmd_filters
+            ),  # 警告命令
             group=GROUP_COMMANDS,
         )
 

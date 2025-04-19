@@ -23,6 +23,9 @@ from config_loader import (
     add_blocked_user,
     remove_blocked_user,
     save_config_async,
+    get_user_warning_count,
+    add_warning_to_user,
+    reset_user_warning,
 )
 import data_manager  # 导入 data_manager 以便访问 submission_list 的 id
 from data_manager import get_submission, save_data_async
@@ -39,6 +42,7 @@ PWS_HELP_TEXT = """<blockquote expandable>📋 审核群指令帮助
 /no [理由] - 拒绝稿件，理由将附加到审核群消息和用户通知中
 /re [内容] - 进入回复模式与投稿人对话，之后您发送的普通消息将自动转发给该用户，直到使用/unre
 /echo [内容] - 直接发送单条消息给投稿人，不进入回复模式
+/warn [理由] - 警告用户，三次警告后自动封禁
 /ban - 将投稿人加入黑名单，阻止其投稿
 /unban - 将投稿人从黑名单移除，恢复其投稿权限
 /unre - 退出当前回复模式
@@ -169,7 +173,7 @@ async def handle_review_command(
         return None, None, None, None, None, None  # 验证失败
 
     # 5. 检查稿件是否已处理 (如果是以下命令，则允许对已处理稿件执行)
-    allowed_for_posted = ["ban", "unban", "re", "echo"]
+    allowed_for_posted = ["ban", "unban", "re", "echo", "warn"]
     if submission_info.get("posted", False) and command_name not in allowed_for_posted:
         status_text = submission_info.get("status", "已处理")
         await update.message.reply_text(f"ℹ️ 此稿件已被处理 (状态: {status_text})。")
@@ -184,7 +188,7 @@ async def handle_review_command(
         return None, None, None, None, None, None  # 验证失败 (缺少投稿人ID)
 
     # 7. 检查投稿人是否被阻止 (仅对需要交互的命令)
-    if command_name in ["ok", "no", "re", "echo"]:
+    if command_name in ["ok", "no", "re", "echo", "warn"]:
         if sender_id in get_blocked_users():
             # 如果投稿人已被阻止，则提示并阻止操作
             await update.message.reply_text(
@@ -691,3 +695,78 @@ async def handle_review_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text("❌ 操作失败：未知按钮。")
         except TelegramError as e:
             logger.error(f"编辑按钮消息以提示未知按钮失败: {e}")
+
+
+# --- 警告命令处理器 ---
+async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理 /warn 命令 (警告投稿人)"""
+    # 调用通用命令验证和信息提取函数
+    (
+        editor,
+        submission_key,
+        submission_info,
+        sender_id,
+        original_msg_id,
+        reason,  # /warn 命令的参数作为警告理由
+    ) = await handle_review_command(update, context, "warn")
+    # 如果验证失败或信息不完整，则直接返回
+    if not editor or not submission_info:
+        return
+
+    # 添加警告并获取当前警告次数
+    warning_count = add_warning_to_user(sender_id)
+    
+    # 保存配置变更
+    await save_config_async()
+    
+    # 自动封禁逻辑：当警告次数达到3次时
+    if warning_count >= 3:
+        # 添加到黑名单
+        if add_blocked_user(sender_id):
+            await save_config_async()
+            
+            # 给投稿人发送被封禁的通知
+            try:
+                ban_text = "⚠️ 由于您已累计收到3次警告，您已被禁止使用投稿功能。"
+                await context.bot.send_message(
+                    chat_id=sender_id,
+                    text=ban_text,
+                    reply_to_message_id=original_msg_id,
+                    allow_sending_without_reply=True,
+                )
+                logger.info(f"用户 {sender_id} 因累计3次警告已被自动封禁并通知。")
+            except Exception as e:
+                logger.error(f"通知被封禁用户 {sender_id} 失败: {e}")
+            
+            # 通知审稿群
+            await update.message.reply_text(
+                f"🚫 用户 {sender_id} 已累计收到3次警告，系统已自动将其加入黑名单。"
+            )
+            return
+    
+    # 构造警告消息文本
+    warning_text = f"⚠️ 警告：您收到了管理员的警告 ({warning_count}/3)"
+    if reason:
+        warning_text += f"\n警告原因: {reason}"
+    warning_text += f"\n注意：累计3次警告将被自动禁止使用投稿功能。"
+    
+    # 发送警告给投稿人
+    try:
+        await context.bot.send_message(
+            chat_id=sender_id,
+            text=warning_text,
+            reply_to_message_id=original_msg_id,
+            allow_sending_without_reply=True,
+        )
+        logger.info(f"已向用户 {sender_id} 发送警告 (当前警告次数: {warning_count}/3)")
+        
+        # 向审稿群确认
+        await update.message.reply_text(
+            f"✅ 已向用户 {sender_id} 发送警告 (当前警告次数: {warning_count}/3)。"
+            + (f"\n警告原因: {reason}" if reason else "")
+        )
+    except Exception as e:
+        logger.error(f"向用户 {sender_id} 发送警告失败: {e}")
+        await update.message.reply_text(
+            f"❌ 向用户 {sender_id} 发送警告失败: {e}"
+        )

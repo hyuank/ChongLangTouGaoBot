@@ -50,6 +50,12 @@ def save_config_sync():
                 if key not in CONFIG["FooterEmojis"]:
                     CONFIG["FooterEmojis"][key] = value
 
+        # 确保 WarningUsers 是字典
+        if "WarningUsers" not in config_to_save or not isinstance(
+            config_to_save.get("WarningUsers"), dict
+        ):
+            config_to_save["WarningUsers"] = {}
+
         with open(config_path, "w", encoding="utf-8") as f:
             # 使用 json.dump 保存字典，ensure_ascii=False 保证中文正常显示，indent=4 美化格式
             json.dump(config_to_save, f, ensure_ascii=False, indent=4)
@@ -213,6 +219,85 @@ def remove_blocked_user(user_id: int | str):
         return False  # 列表不存在或用户不在列表中
 
 
+# --- 警告用户管理函数 ---
+def get_warning_users() -> Dict[str, int]:
+    """返回被警告的用户 ID 及其警告次数的字典"""
+    warnings = CONFIG.get("WarningUsers", {})
+    if not isinstance(warnings, dict):
+        logger.warning("配置文件中的 'WarningUsers' 不是字典，返回空字典。")
+        CONFIG["WarningUsers"] = {}
+        return {}
+
+    # 确保键是字符串，值是整数
+    valid_warnings = {}
+    for user_id, count in warnings.items():
+        try:
+            valid_warnings[str(user_id)] = int(count)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"配置文件中的 WarningUsers 字典包含无效项: {user_id}:{count}"
+            )
+
+    return valid_warnings
+
+
+def get_user_warning_count(user_id: int | str) -> int:
+    """获取指定用户的警告次数"""
+    try:
+        uid_str = str(user_id)  # 确保用户ID是字符串格式
+    except (ValueError, TypeError):
+        logger.warning(f"尝试获取无效用户 ID 的警告次数: {user_id}")
+        return 0  # 返回0表示无警告
+
+    warnings = get_warning_users()
+    return warnings.get(uid_str, 0)
+
+
+def add_warning_to_user(user_id: int | str) -> int:
+    """给用户添加一次警告，返回警告后的总次数"""
+    try:
+        uid_str = str(user_id)  # 确保用户ID是字符串格式
+    except (ValueError, TypeError):
+        logger.warning(f"尝试给无效用户 ID 添加警告: {user_id}")
+        return 0  # 返回0表示操作失败
+
+    # 确保 WarningUsers 是字典
+    if "WarningUsers" not in CONFIG or not isinstance(CONFIG.get("WarningUsers"), dict):
+        CONFIG["WarningUsers"] = {}
+
+    # 获取当前警告次数并加1
+    current_count = CONFIG["WarningUsers"].get(uid_str, 0)
+    new_count = current_count + 1
+    CONFIG["WarningUsers"][uid_str] = new_count
+
+    logger.info(f"用户 {user_id} 的警告次数已增加到 {new_count} (内存中)。")
+    # 注意: 需要调用 save_config_async() 来保存更改
+    return new_count
+
+
+def reset_user_warning(user_id: int | str) -> bool:
+    """重置用户的警告次数为0，如果用户有警告记录则返回True"""
+    try:
+        uid_str = str(user_id)  # 确保用户ID是字符串格式
+    except (ValueError, TypeError):
+        logger.warning(f"尝试重置无效用户 ID 的警告: {user_id}")
+        return False  # 操作失败
+
+    # 确保 WarningUsers 是字典
+    if "WarningUsers" not in CONFIG or not isinstance(CONFIG.get("WarningUsers"), dict):
+        CONFIG["WarningUsers"] = {}
+        return False  # 没有警告记录
+
+    # 检查用户是否有警告记录
+    if uid_str in CONFIG["WarningUsers"]:
+        CONFIG["WarningUsers"][uid_str] = 0
+        logger.info(f"用户 {user_id} 的警告次数已重置为0 (内存中)。")
+        # 注意: 需要调用 save_config_async() 来保存更改
+        return True  # 成功重置
+
+    return False  # 用户没有警告记录
+
+
 # =============================================
 #  配置文件加载逻辑 (在函数定义之后执行)
 # =============================================
@@ -233,41 +318,44 @@ try:
         # 触发一次同步保存以修复配置文件
         save_config_sync()
 
+    # --- 初始化/验证 WarningUsers --- #
+    # 确保 WarningUsers 字段存在且是字典类型
+    if "WarningUsers" not in CONFIG or not isinstance(CONFIG.get("WarningUsers"), dict):
+        logger.warning("配置文件中 'WarningUsers' 丢失或格式不正确，将重置为空字典。")
+        CONFIG["WarningUsers"] = {}
+        # 触发一次同步保存以修复配置文件
+        save_config_sync()
+
 except FileNotFoundError:
-    # 如果配置文件不存在，则创建默认配置文件
-    logger.error(f"错误：找不到配置文件 {config_path}。")
-    default_config = {
-        "Token": "YOUR_BOT_TOKEN",
-        "Admin": 0,  # 权蛆 User ID
-        "Group_ID": 0,  # 审稿群组 Chat ID
-        "Publish_Channel_ID": "",  # 发布频道 ID (@username 或 -100...)
-        "EnableFooter": False,  # 是否启用小尾巴功能
-        "ChatLink": "",  # 自定义聊天链接
-        "FooterEmojis": {
-            "submission": "👊",
-            "channel": "🌊",
-            "chat": "🔥",
-        },  # 小尾巴表情
-        "BlockedUsers": [],  # 黑名单用户列表
+    # 如果配置文件不存在，则初始化默认值
+    logger.warning(f"未找到配置文件 {config_path}，将使用空配置。")
+    CONFIG = {
+        "Token": "",
+        "Admin": "",
+        "Group_ID": None,
+        "Publish_Channel_ID": None,
+        "BlockedUsers": [],
+        "WarningUsers": {},
+        "EnableFooter": False,
+        "ChatLink": "",
+        "FooterEmojis": {"submission": "👊", "channel": "🌊", "chat": "🔥"},
     }
+    # 创建一个包含默认值的新配置文件
     try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, ensure_ascii=False, indent=4)
+        save_config_sync()
         logger.info(
-            f"已在 {config_path} 创建默认配置文件，请填写 Token 和 Admin ID 后重新运行。"
+            f"已创建默认配置文件 {config_path}，请填写 Token 和 Admin ID 后重新运行"
         )
     except Exception as e:
-        logger.error(f"创建默认配置文件失败: {e}")
-    sys.exit(1)  # 退出程序，让用户填写配置
-
-except json.JSONDecodeError as e:
-    # 如果配置文件内容不是有效的 JSON 格式
-    logger.error(f"错误：配置文件 {config_path} 格式无效: {e}")
-    sys.exit(1)
+        logger.error(f"创建默认配置文件失败: {e}", exc_info=True)
+except json.JSONDecodeError:
+    # 如果配置文件格式无效
+    logger.error(f"配置文件 {config_path} 不是有效的 JSON 格式。请检查配置。")
+    sys.exit(1)  # 无法加载配置，退出程序
 except Exception as e:
-    # 捕获其他加载配置时可能发生的错误
+    # 捕获其他可能的错误
     logger.error(f"加载配置时发生未知错误: {e}", exc_info=True)
-    sys.exit(1)
+    sys.exit(1)  # 无法加载配置，退出程序
 
 # --- 加载完成后打印一些关键配置信息 (Debug 级别) ---
 logger.debug(f"加载的权蛆 ID: {get_admin_id()}")
