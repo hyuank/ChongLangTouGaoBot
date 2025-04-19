@@ -293,9 +293,14 @@ async def post_submission(
 
             # --- 获取第一个媒体的原始 caption，并将附加信息添加到其上 --- #
             first_item_info = media_list_info[0] if media_list_info else {}
+
+            # 使用caption_html而不是普通caption，确保保留HTML格式（包括引用）
             original_caption_media = first_item_info.get(
-                "caption"
-            )  # 第一个媒体的原 caption
+                "caption_html"
+            ) or first_item_info.get(
+                "caption", ""
+            )  # 优先使用HTML格式，否则回退到普通格式
+
             # 最终第一个媒体的 caption = 原 caption + 附加信息
             final_caption_for_first = (
                 original_caption_media or ""
@@ -418,7 +423,7 @@ async def post_submission(
                     {
                         "text": final_content_single or "[空文本]",  # 防止发送空消息
                         "parse_mode": final_parse_mode_single,
-                        # 文本消息没有 disable_web_page_preview，需要单独处理链接预览
+                        "disable_web_page_preview": True,  # 禁用链接预览
                     }
                 )
             elif msg_to_post.photo:

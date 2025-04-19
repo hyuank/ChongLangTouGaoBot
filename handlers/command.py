@@ -27,33 +27,32 @@ from data_manager import get_pending_submission_count
 logger = logging.getLogger(__name__)
 
 # --- 定义详细帮助文本 ---
-HELP_TEXT = """
-<b>欢迎使用投稿机器人！</b>
+HELP_TEXT = """<blockquote expandable>📋投稿机器人使用指南
+▶️ 基本使用：
+- 请直接向我发送您想投稿的内容 (文字、图片、音频、视频、文件等)。
+- 您也可以转发消息给我来进行投稿。
+- 机器人会询问您希望保留来源（实名）还是匿名发送。
 
-➡️ 请直接向我发送您想投稿的内容 (文字、图片、音频、视频、文件等)。
-➡️ 您也可以转发消息给我来进行投稿。
-➡️ 机器人会询问您希望保留来源（实名）还是匿名发送。
+▶️ 常用命令：
+/start - 显示欢迎信息
+/help - 显示此帮助
+/version - 显示机器人版本信息
+/about - 关于此机器人
+</blockquote>"""
 
-<b>可用命令:</b>
-<code>/start</code> - 显示欢迎信息。
-<code>/help</code> - 显示此详细帮助信息。
-<code>/version</code> - 显示机器人版本。
-<code>/about</code> - 显示机器人信息。
-"""
+ADMIN_HELP_TEXT = """<blockquote expandable>📋权蛆专用命令
+▶️ 管理命令：
+/status - 显示机器人状态
+/setgroup - (在目标群组内使用) 将当前群组设置为审稿群
+/setchannel [ID或频道名] - (在审核群内使用) 设置发布频道(例如: @channel_name 或 -100123456)
+/setchatlink [聊天群链接] - (在审核群内使用) 设置小尾巴中"聊天"的超链接(例如: /setchatlink https://t.me/your_chat)
+/setemoji [类型] [Emoji] - (在审核群内使用) 设置小尾巴Emoji
+可选类型: submission, channel, chat
+例如: /setemoji submission 💬
 
-ADMIN_HELP_TEXT = """
-<b>权蛆命令:</b>
-<code>/status</code> - 显示机器人当前配置状态。
-<code>/setgroup</code> - (在目标群组内使用) 将当前群组设置为审稿群。
-<code>/setchannel ID或用户名</code> - 设置发布频道 (例如: <code>@channel_name</code> 或 <code>-100123...</code>)。
-<code>/setchatlink [链接]</code> - 设置小尾巴中的“聊天”链接 (例如: <code>/setchatlink https://t.me/your_chat</code>)。
-<code>/setemoji [类型] [Emoji]</code> - 设置小尾巴链接前的 Emoji。
-  类型: <code>submission</code>, <code>channel</code>, <code>chat</code>
-  示例: <code>/setemoji submission 💬</code>
-
-<b>审核群指令:</b>
-(请在审核群内使用 <code>/pwshelp</code> 获取详细指令)
-"""
+▶️ 审核指令：
+在审核群内使用 /pwshelp 获取详细指令
+</blockquote>"""
 # -------------------------
 
 
@@ -86,9 +85,20 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
         # 如果是权蛆，追加权蛆帮助信息
         if user.id == admin_id_local:
             base_help += "\n" + ADMIN_HELP_TEXT
-        await message.reply_text(
-            base_help, parse_mode=ParseMode.HTML, disable_web_page_preview=True
-        )
+        try:
+            await message.reply_text(
+                base_help, parse_mode=ParseMode.HTML, disable_web_page_preview=True
+            )
+        except TelegramError as e:
+            logger.error(f"发送 HTML 帮助信息失败: {e}")
+            # 如果HTML格式发送失败，尝试使用纯文本
+            plain_text_help = (
+                base_help.replace("<blockquote expandable>", "")
+                .replace("</blockquote>", "")
+                .replace("<", "\\<")
+                .replace(">", "\\>")
+            )
+            await message.reply_text("发送格式化帮助失败...\n" + plain_text_help)
         return
     # ----------------------
 
@@ -181,7 +191,7 @@ async def handle_general_commands(update: Update, context: ContextTypes.DEFAULT_
                 chat_link_url = command_parts[1]
                 update_config("ChatLink", chat_link_url)
                 await save_config_async()
-                await message.reply_text(f"✅ 已设置“聊天”链接为: {chat_link_url}")
+                await message.reply_text(f'✅ 已设置"聊天"链接为: {chat_link_url}')
                 logger.info(f"权蛆 {user.name} 已设置聊天链接为 {chat_link_url}")
             else:
                 current_link = get_chat_link()

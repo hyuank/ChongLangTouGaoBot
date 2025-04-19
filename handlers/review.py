@@ -33,27 +33,24 @@ from posting import post_submission, reject_submission, reply_to_submitter
 logger = logging.getLogger(__name__)
 
 # --- 帮助信息 ---
-PWS_HELP_TEXT = """
-<b>审核群指令帮助</b> (<code>/pwshelp</code>):
-(请在回复投稿消息时使用以下指令)
-
-<code>/ok (可选评论)</code> - 采纳稿件。将按投稿人原选方式（实名/匿名）发布。评论将附加到频道消息下。
-<code>/no (可选理由)</code> - 拒绝稿件。理由将附加到审核群消息和用户通知中。
-<code>/re (回复内容)</code> - 进入回复模式，直接与投稿人对话。之后您发送的普通消息将自动转发给该用户，直到使用 <code>/unre</code>。
-<code>/echo (回复内容)</code> - 直接向投稿人发送单条消息，不进入回复模式。
-<code>/ban</code> - 将该投稿人加入黑名单，阻止其再次投稿。
-<code>/unban</code> - 将该投稿人从黑名单移除。
-<code>/unre</code> - 退出当前的回复模式 (<code>/re</code> 状态)。
-
-<b>(以下指令无需回复投稿消息)</b>
-<code>/status</code> - (权蛆) 显示机器人状态。
-<code>/setgroup</code> - (权蛆，群内) 设置当前群为审核群。
-<code>/setchannel ID或用户名</code> - (权蛆) 设置发布频道。(例如: <code>/setchannel @mychannel</code> 或 <code>/setchannel -100123...</code>)
-<code>/setchatlink [链接]</code> - (权蛆) 设置小尾巴中的“聊天”链接。(例如: <code>/setchatlink https://t.me/your_chat</code>)
-<code>/setemoji [类型] [Emoji]</code> - (权蛆) 设置小尾巴链接的 Emoji。
-  类型: <code>submission</code>, <code>channel</code>, <code>chat</code>
-  示例: <code>/setemoji submission 💬</code>
-"""
+PWS_HELP_TEXT = """<blockquote expandable>📋 审核群指令帮助
+▶️ 回复投稿消息时使用：
+/ok [评论] - 采纳稿件，按投稿人选择的(匿名/实名)方式发布，评论将作为发布消息的附加文本
+/no [理由] - 拒绝稿件，理由将附加到审核群消息和用户通知中
+/re [内容] - 进入回复模式与投稿人对话，之后您发送的普通消息将自动转发给该用户，直到使用/unre
+/echo [内容] - 直接发送单条消息给投稿人，不进入回复模式
+/ban - 将投稿人加入黑名单，阻止其投稿
+/unban - 将投稿人从黑名单移除，恢复其投稿权限
+/unre - 退出当前回复模式
+▶️ 无需回复特定投稿消息：
+/status - (权蛆) 显示机器人状态
+/setgroup - (权蛆，群内) 设置当前群为审核群
+/setchannel [ID或用户名] - (权蛆) 设置发布频道 (例如: /setchannel @mychannel 或 /setchannel -100123456)
+/setchatlink [聊天群链接] - (权蛆) 设置小尾巴中"聊天"的超链接(例如: /setchatlink https://t.me/your_chat)
+/setemoji [类型] [Emoji]- (权蛆) 设置小尾巴Emoji
+可选类型: submission, channel, chat
+例如: /setemoji submission 💬
+</blockquote>"""
 
 
 # --- 辅助函数：获取投稿详情 ---
@@ -218,7 +215,7 @@ async def pwshelp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 确保消息来自群组或超级群组
     if update.message and update.message.chat.type in ["group", "supergroup"]:
         try:
-            # 尝试发送 HTML 格式的帮助信息，并禁用网页预览
+            # 使用折叠引用格式发送帮助信息，以减少屏幕占用
             await update.message.reply_text(
                 PWS_HELP_TEXT, parse_mode=ParseMode.HTML, disable_web_page_preview=True
             )
@@ -227,14 +224,10 @@ async def pwshelp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"发送 HTML 帮助信息失败: {e}")
             # 尝试将 HTML 格式的帮助文本转换为纯文本
             plain_text_help = (
-                PWS_HELP_TEXT.replace("<code>", "`")
-                .replace("</code>", "`")
-                .replace("<b>", "")
-                .replace("</b>", "")
-                .replace(
-                    "<", "<"
-                )  # 注意: < 和 > 可能仍需转义，取决于 TG 如何处理纯文本
-                .replace(">", ">")
+                PWS_HELP_TEXT.replace("<blockquote expandable>", "")
+                .replace("</blockquote>", "")
+                .replace("<", "\\<")
+                .replace(">", "\\>")
             )
             try:
                 # 发送纯文本版本的帮助信息
