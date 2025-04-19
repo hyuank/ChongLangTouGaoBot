@@ -168,8 +168,9 @@ async def handle_review_command(
         # (考虑: 是否需要告知用户找不到记录?)
         return None, None, None, None, None, None  # 验证失败
 
-    # 5. 检查稿件是否已处理 (ban/unban 命令除外)
-    if submission_info.get("posted", False) and command_name not in ["ban", "unban"]:
+    # 5. 检查稿件是否已处理 (如果是以下命令，则允许对已处理稿件执行)
+    allowed_for_posted = ["ban", "unban", "re", "echo"]
+    if submission_info.get("posted", False) and command_name not in allowed_for_posted:
         status_text = submission_info.get("status", "已处理")
         await update.message.reply_text(f"ℹ️ 此稿件已被处理 (状态: {status_text})。")
         return None, None, None, None, None, None  # 验证失败 (稿件已处理)

@@ -68,15 +68,15 @@
     *   创建Supervisor配置文件：
       ```ini
       [program:ChongLangTouGaoBot] ; 自定义程序名称
-      command                 =/root/ChongLangTouGaoBot/.venv/bin/python /root/ChongLangTouGaoBot/bot.py ; 根据个人需要修改
-      directory               =/root/ChongLangTouGaoBot ; 根据个人需要修改
-      autostart               =true ; 开机自启
-      startsecs               =3
+      command                 = /root/ChongLangTouGaoBot/.venv/bin/python /root/ChongLangTouGaoBot/bot.py ; 根据个人需要修改
+      directory               = /root/ChongLangTouGaoBot ; 根据个人需要修改
+      autostart               = true ; 开机自启
+      startsecs               = 3
       stdout_logfile          = /opt/log/ChongLangTouGaoBot.out.log ; 根据个人需要修改
       stderr_logfile          = /opt/log/ChongLangTouGaoBot.err.log ; 根据个人需要修改
       stdout_logfile_maxbytes = 2MB ; 日志大小上限，根据个人需要修改
       stderr_logfile_maxbytes = 2MB ; 日志大小上限，根据个人需要修改
-      user                    =root ; 根据个人需要修改，确保有运行目录的读写权限
+      user                    = root ; 根据个人需要修改，确保有运行目录的读写权限
       priority                = 999
       numprocs                = 1 ; 建议设置为1，否则有玄学问题
       process_name            = %(program_name)s_%(process_num)02d
