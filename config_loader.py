@@ -5,7 +5,7 @@ import os
 import sys
 import logging
 import threading
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -27,34 +27,66 @@ def save_config_sync():
     try:
         # 使用 CONFIG 的当前状态创建副本以进行保存，避免在写入时被修改
         config_to_save = CONFIG.copy()
-        # 确保 BlockedUsers 是列表（以防万一在内存中被意外修改）
-        if "BlockedUsers" not in config_to_save or not isinstance(
-            config_to_save.get("BlockedUsers"), list
-        ):
-            config_to_save["BlockedUsers"] = []
-        if "EnableFooter" not in CONFIG:
-            logger.info("配置文件中未找到 'EnableFooter'，将添加默认值: False。")
-            CONFIG["EnableFooter"] = False
-        if "ChatLink" not in CONFIG:
-            logger.info("配置文件中未找到 'ChatLink'，将添加空字符串。")
-            CONFIG["ChatLink"] = ""
-        default_emojis = {"submission": "👊", "channel": "🌊", "chat": "🔥"}
-        if "FooterEmojis" not in CONFIG or not isinstance(
-            CONFIG.get("FooterEmojis"), dict
-        ):
-            logger.info("配置文件中未找到或格式错误 'FooterEmojis'，将添加默认值。")
-            CONFIG["FooterEmojis"] = default_emojis.copy()
-        else:
-            # 确保默认的键存在
-            for key, value in default_emojis.items():
-                if key not in CONFIG["FooterEmojis"]:
-                    CONFIG["FooterEmojis"][key] = value
 
+        # --- 确保新的 Webhook 和测试模式字段有默认值 ---
+        defaults = {
+            "TestMode": True,
+            "WebhookURL": "",
+            "WebhookSecretToken": "",
+            "ListenAddress": "0.0.0.0",
+            "ListenPort": 8443,
+            "BlockedUsers": [],
+            "EnableFooter": False,
+            "ChatLink": "",
+            "FooterEmojis": {"submission": "👊", "channel": "🌊", "chat": "🔥"},
+            "WarningUsers": {},
+        }
+        for key, default_value in defaults.items():
+            if key not in config_to_save:
+                # 特殊处理 BlockedUsers 和 WarningUsers 的类型
+                if key == "BlockedUsers" and not isinstance(
+                    config_to_save.get(key), list
+                ):
+                    config_to_save[key] = []
+                elif key == "WarningUsers" and not isinstance(
+                    config_to_save.get(key), dict
+                ):
+                    config_to_save[key] = {}
+                # 对于其他键，如果不存在，则添加默认值
+                elif key not in ["BlockedUsers", "WarningUsers"]:
+                    config_to_save[key] = default_value
+                    logger.info(
+                        f"配置文件中未找到 '{key}'，将添加默认值: {default_value}。"
+                    )
+
+        # 确保 BlockedUsers 是列表 (以防万一在内存中被意外修改)
+        if not isinstance(config_to_save.get("BlockedUsers"), list):
+            config_to_save["BlockedUsers"] = []
         # 确保 WarningUsers 是字典
-        if "WarningUsers" not in config_to_save or not isinstance(
-            config_to_save.get("WarningUsers"), dict
-        ):
+        if not isinstance(config_to_save.get("WarningUsers"), dict):
             config_to_save["WarningUsers"] = {}
+        # 确保 FooterEmojis 及其默认键存在
+        default_emojis = {"submission": "👊", "channel": "🌊", "chat": "🔥"}
+        if "FooterEmojis" not in config_to_save or not isinstance(
+            config_to_save.get("FooterEmojis"), dict
+        ):
+            config_to_save["FooterEmojis"] = default_emojis.copy()
+        else:
+            for emoji_key, emoji_value in default_emojis.items():
+                if emoji_key not in config_to_save["FooterEmojis"]:
+                    config_to_save["FooterEmojis"][emoji_key] = emoji_value
+        # 确保 TestMode 是布尔值
+        if not isinstance(config_to_save.get("TestMode"), bool):
+            config_to_save["TestMode"] = True  # 默认为 True
+            logger.warning("配置文件中的 'TestMode' 不是布尔值，已重置为 True。")
+        # 确保 ListenPort 是整数
+        try:
+            if "ListenPort" in config_to_save:
+                config_to_save["ListenPort"] = int(config_to_save["ListenPort"])
+        except (ValueError, TypeError):
+            config_to_save["ListenPort"] = 8443  # 默认端口
+            logger.warning("配置文件中的 'ListenPort' 不是有效整数，已重置为 8443。")
+        # ----------------------------------------------------------
 
         with open(config_path, "w", encoding="utf-8") as f:
             # 使用 json.dump 保存字典，ensure_ascii=False 保证中文正常显示，indent=4 美化格式
@@ -101,7 +133,7 @@ def get_group_id() -> int | None:
         return None
 
 
-def get_publish_channel_id() -> str | int | None:
+def get_publish_channel_id() -> Union[str, int, None]:
     """获取发布频道的 ID 或用户名"""
     # 频道 ID 可能是 @username 或 -100xxxx (int)
     channel_id = CONFIG.get("Publish_Channel_ID")
@@ -114,6 +146,46 @@ def get_publish_channel_id() -> str | int | None:
             return channel_id
     # 返回原始值 (可能是 @username, None, 或已经是 int)
     return channel_id
+
+
+# --- Webhook 和测试模式获取函数 ---
+def is_test_mode() -> bool:
+    """检查是否启用了测试模式 (轮询)"""
+    # 默认为 True (测试模式)
+    return bool(CONFIG.get("TestMode", True))
+
+
+def get_webhook_url() -> Optional[str]:
+    """获取 Webhook URL"""
+    url = CONFIG.get("WebhookURL")
+    if url and isinstance(url, str) and url.startswith("https://"):
+        return url
+    return None
+
+
+def get_webhook_secret_token() -> Optional[str]:
+    """获取 Webhook Secret Token"""
+    token = CONFIG.get("WebhookSecretToken")
+    # 返回字符串或 None，允许为空字符串
+    return str(token) if token is not None else None
+
+
+def get_listen_address() -> str:
+    """获取 Webhook 监听地址"""
+    # 默认为 '0.0.0.0'
+    addr = CONFIG.get("ListenAddress")
+    return str(addr) if addr else "0.0.0.0"
+
+
+def get_listen_port() -> int:
+    """获取 Webhook 监听端口"""
+    port = CONFIG.get("ListenPort")
+    try:
+        # 确保端口是有效整数
+        return int(port) if port else 8443
+    except (ValueError, TypeError):
+        # 默认端口 8443
+        return 8443
 
 
 def is_footer_enabled() -> bool:
@@ -165,10 +237,11 @@ def get_blocked_users() -> List[int]:
         return valid_ids
     # 如果 BlockedUsers 不是列表 (配置错误)，则返回空列表并警告
     logger.warning("配置文件中的 'BlockedUsers' 不是列表，返回空列表。")
+    CONFIG["BlockedUsers"] = []  # 重置为列表
     return []
 
 
-def add_blocked_user(user_id: int | str):
+def add_blocked_user(user_id: Union[int, str]):
     """将用户 ID 添加到阻止列表（仅内存中）"""
     try:
         uid_int = int(user_id)  # 确保传入的是有效数字 ID
@@ -191,7 +264,7 @@ def add_blocked_user(user_id: int | str):
         return False  # 已存在，未添加
 
 
-def remove_blocked_user(user_id: int | str):
+def remove_blocked_user(user_id: Union[int, str]):
     """从阻止列表中移除用户 ID（仅内存中）"""
     try:
         uid_int = int(user_id)  # 确保传入的是有效数字 ID
@@ -216,7 +289,12 @@ def remove_blocked_user(user_id: int | str):
             return False  # 用户不在列表中
     else:
         logger.info(f"用户 {uid_int} 不在阻止列表中 (或列表不存在)。")
-        return False  # 列表不存在或用户不在列表中
+        # 如果列表不存在，也视为不在列表中
+        if "BlockedUsers" not in CONFIG or not isinstance(
+            CONFIG.get("BlockedUsers"), list
+        ):
+            CONFIG["BlockedUsers"] = []
+        return False
 
 
 # --- 警告用户管理函数 ---
@@ -241,7 +319,7 @@ def get_warning_users() -> Dict[str, int]:
     return valid_warnings
 
 
-def get_user_warning_count(user_id: int | str) -> int:
+def get_user_warning_count(user_id: Union[int, str]) -> int:
     """获取指定用户的警告次数"""
     try:
         uid_str = str(user_id)  # 确保用户ID是字符串格式
@@ -253,7 +331,7 @@ def get_user_warning_count(user_id: int | str) -> int:
     return warnings.get(uid_str, 0)
 
 
-def add_warning_to_user(user_id: int | str) -> int:
+def add_warning_to_user(user_id: Union[int, str]) -> int:
     """给用户添加一次警告，返回警告后的总次数"""
     try:
         uid_str = str(user_id)  # 确保用户ID是字符串格式
@@ -275,7 +353,7 @@ def add_warning_to_user(user_id: int | str) -> int:
     return new_count
 
 
-def reset_user_warning(user_id: int | str) -> bool:
+def reset_user_warning(user_id: Union[int, str]) -> bool:
     """重置用户的警告次数为0，如果用户有警告记录则返回True"""
     try:
         uid_str = str(user_id)  # 确保用户ID是字符串格式
@@ -290,12 +368,16 @@ def reset_user_warning(user_id: int | str) -> bool:
 
     # 检查用户是否有警告记录
     if uid_str in CONFIG["WarningUsers"]:
-        CONFIG["WarningUsers"][uid_str] = 0
-        logger.info(f"用户 {user_id} 的警告次数已重置为0 (内存中)。")
-        # 注意: 需要调用 save_config_async() 来保存更改
-        return True  # 成功重置
-
-    return False  # 用户没有警告记录
+        # 只有在当前次数不为0时才重置并记录
+        if CONFIG["WarningUsers"][uid_str] != 0:
+            CONFIG["WarningUsers"][uid_str] = 0
+            logger.info(f"用户 {user_id} 的警告次数已重置为0 (内存中)。")
+            # 注意: 需要调用 save_config_async() 来保存更改
+            return True  # 成功重置
+        else:
+            return False  # 本身就是0，不算重置成功
+    else:
+        return False  # 用户没有警告记录
 
 
 # =============================================
@@ -310,30 +392,64 @@ try:
         CONFIG.update(loaded_config)
     logger.info("配置加载成功.")
 
-    # --- 初始化/验证 BlockedUsers --- #
-    # 确保 BlockedUsers 字段存在且是列表类型
-    if "BlockedUsers" not in CONFIG or not isinstance(CONFIG.get("BlockedUsers"), list):
-        logger.warning("配置文件中 'BlockedUsers' 丢失或格式不正确，将重置为空列表。")
-        CONFIG["BlockedUsers"] = []
-        # 触发一次同步保存以修复配置文件
-        save_config_sync()
+    # --- 验证和初始化新配置项 ---
+    needs_save = False  # 标记是否需要保存修复后的配置
+    defaults = {
+        "TestMode": True,
+        "WebhookURL": "",
+        "WebhookSecretToken": "",
+        "ListenAddress": "0.0.0.0",
+        "ListenPort": 8443,
+        "BlockedUsers": [],
+        "EnableFooter": False,
+        "ChatLink": "",
+        "FooterEmojis": {"submission": "👊", "channel": "🌊", "chat": "🔥"},
+        "WarningUsers": {},
+    }
+    for key, default_value in defaults.items():
+        if key not in CONFIG:
+            CONFIG[key] = default_value
+            logger.warning(f"配置文件中未找到 '{key}'，已添加默认值: {default_value}。")
+            needs_save = True
 
-    # --- 初始化/验证 WarningUsers --- #
-    # 确保 WarningUsers 字段存在且是字典类型
-    if "WarningUsers" not in CONFIG or not isinstance(CONFIG.get("WarningUsers"), dict):
-        logger.warning("配置文件中 'WarningUsers' 丢失或格式不正确，将重置为空字典。")
+    # 强制类型检查和修正
+    if not isinstance(CONFIG.get("BlockedUsers"), list):
+        logger.warning("配置文件中的 'BlockedUsers' 不是列表，已重置为空列表。")
+        CONFIG["BlockedUsers"] = []
+        needs_save = True
+    if not isinstance(CONFIG.get("WarningUsers"), dict):
+        logger.warning("配置文件中的 'WarningUsers' 不是字典，已重置为空字典。")
         CONFIG["WarningUsers"] = {}
-        # 触发一次同步保存以修复配置文件
-        save_config_sync()
+        needs_save = True
+    if not isinstance(CONFIG.get("TestMode"), bool):
+        logger.warning("配置文件中的 'TestMode' 不是布尔值，已重置为 True。")
+        CONFIG["TestMode"] = True
+        needs_save = True
+    try:
+        if "ListenPort" in CONFIG:
+            CONFIG["ListenPort"] = int(CONFIG["ListenPort"])
+    except (ValueError, TypeError):
+        logger.warning("配置文件中的 'ListenPort' 不是有效整数，已重置为 8443。")
+        CONFIG["ListenPort"] = 8443
+        needs_save = True
+
+    if needs_save:
+        logger.info("配置文件已更新，正在保存更改...")
+        save_config_sync()  # 保存一次修正后的配置
 
 except FileNotFoundError:
     # 如果配置文件不存在，则初始化默认值
-    logger.warning(f"未找到配置文件 {config_path}，将使用空配置。")
+    logger.warning(f"未找到配置文件 {config_path}，将使用默认配置创建新文件。")
     CONFIG = {
         "Token": "",
         "Admin": "",
         "Group_ID": None,
         "Publish_Channel_ID": None,
+        "TestMode": True,
+        "WebhookURL": "",
+        "WebhookSecretToken": "",
+        "ListenAddress": "0.0.0.0",
+        "ListenPort": 8443,
         "BlockedUsers": [],
         "WarningUsers": {},
         "EnableFooter": False,
@@ -344,10 +460,13 @@ except FileNotFoundError:
     try:
         save_config_sync()
         logger.info(
-            f"已创建默认配置文件 {config_path}，请填写 Token 和 Admin ID 后重新运行"
+            f"已创建默认配置文件 {config_path}，请填写 Token 和 Admin ID 后重新运行。"
+            f"如果需要在生产环境使用 Webhook，请修改 TestMode 为 false 并填写 Webhook 相关配置。"
         )
     except Exception as e:
         logger.error(f"创建默认配置文件失败: {e}", exc_info=True)
+    sys.exit(1)  # 缺少关键信息，必须退出
+
 except json.JSONDecodeError:
     # 如果配置文件格式无效
     logger.error(f"配置文件 {config_path} 不是有效的 JSON 格式。请检查配置。")
@@ -361,3 +480,18 @@ except Exception as e:
 logger.debug(f"加载的权蛆 ID: {get_admin_id()}")
 logger.debug(f"加载的群组 ID: {get_group_id()}")
 logger.debug(f"加载的阻止用户: {get_blocked_users()}")
+logger.debug(f"测试模式: {is_test_mode()}")
+if not is_test_mode():
+    logger.debug(f"Webhook URL: {get_webhook_url()}")
+    logger.debug(f"Webhook 监听地址: {get_listen_address()}")
+    logger.debug(f"Webhook 监听端口: {get_listen_port()}")
+    logger.debug(
+        f"Webhook Secret Token: {'已设置' if get_webhook_secret_token() else '未设置'}"
+    )
+
+# --- 检查生产模式下的 Webhook URL ---
+if not is_test_mode() and not get_webhook_url():
+    logger.error(
+        "错误：当前为生产模式 (TestMode=false)，但未配置有效的 WebhookURL。请设置后重试。"
+    )
+    sys.exit(1)

@@ -1,3 +1,5 @@
 config.json
 bot_persistence.pkl
 data.json
+.venv
+__pycache__

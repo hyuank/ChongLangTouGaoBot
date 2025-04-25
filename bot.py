@@ -4,6 +4,7 @@
 
 import logging
 import sys
+import warnings
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -86,13 +87,53 @@ async def post_init(application: Application):
         username = f"@{me.username}" if me.username else f"Bot (ID: {me.id})"
         config_loader.update_config("Username", username)
 
-        logger.info(f"机器人启动成功！ID: {me.id}, Username: {username}")
+        # --- 根据模式显示不同的启动信息 ---
+        test_mode = config_loader.is_test_mode()
+        mode_str = "测试模式 (Polling)" if test_mode else "生产模式 (Webhook)"
+        logger.info(f"机器人启动成功！模式: {mode_str}")
+        logger.info(f"ID: {me.id}, Username: {username}")
+        # -----------------------------------
+
         logger.info(f"版本: {Version_Code}")
         logger.info(f"权蛆 ID: {config_loader.get_admin_id() or '未设置'}")
         logger.info(f"审稿群组 ID: {config_loader.get_group_id() or '未设置'}")
         logger.info(
             f"发布频道 ID: {config_loader.get_publish_channel_id() or '未设置'}"
         )
+
+        # --- Webhook 设置 (仅在生产模式下) ---
+        if not test_mode:
+            webhook_url = config_loader.get_webhook_url()
+            secret_token = config_loader.get_webhook_secret_token()
+            if webhook_url:
+                logger.info(f"Webhook URL: {webhook_url}")
+                logger.info(
+                    f"Webhook Secret Token: {'已设置' if secret_token else '未设置'}"
+                )
+                try:
+                    await application.bot.set_webhook(
+                        url=webhook_url,
+                        allowed_updates=Update.ALL_TYPES,  # 接收所有更新类型
+                        secret_token=secret_token or None,  # 如果为空字符串则不设置
+                    )
+                    webhook_info = await application.bot.get_webhook_info()
+                    if webhook_info.url == webhook_url:
+                        logger.info(f"Webhook 设置成功！当前指向: {webhook_info.url}")
+                    else:
+                        logger.error(
+                            f"Webhook 设置失败！当前指向: {webhook_info.url} (预期: {webhook_url})"
+                        )
+                        # 可以在这里添加退出逻辑或进一步处理
+                        # sys.exit(1)
+                except TelegramError as e:
+                    logger.error(f"设置 Webhook 时发生错误: {e}", exc_info=True)
+                    # 也可以考虑退出
+                    # sys.exit(1)
+            else:
+                # 理论上 config_loader 已经检查过，这里是双重保险
+                logger.error("生产模式下 WebhookURL 未设置，无法启动 Webhook 服务！")
+                # sys.exit(1)
+        # ----------------------------------------
 
         # 启动时检查配置完整性
         admin_id = config_loader.get_admin_id()
@@ -115,7 +156,7 @@ async def post_init(application: Application):
             try:
                 await application.bot.send_message(
                     chat_id=admin_id,
-                    text=f"✅ 机器人已成功启动！\n版本: {Version_Code}\nUsername: {username}",
+                    text=f"✅ 机器人已成功启动！\n模式: {mode_str}\n版本: {Version_Code}\nUsername: {username}",
                 )
             except TelegramError as e:
                 # 例如，如果用户阻止了机器人，会抛出 Forbidden 错误
@@ -237,7 +278,7 @@ def main():
                     "status",
                     "setgroup",  # 权蛆设置审核群
                     "setchannel",  # 权蛆设置发布频道
-                    "setchatlink",  # 权蛆设置小尾巴中的“聊天”链接
+                    "setchatlink",  # 权蛆设置小尾巴中的"聊天"链接
                     "setemoji",  # 权蛆设置小尾巴中的 Emoji
                     "about",
                     "help",
@@ -318,11 +359,37 @@ def main():
         # 注册错误处理器
         application.add_error_handler(error_handler)
 
-        # --- 启动轮询 ---
-        logger.info("机器人处理器设置完成，开始轮询 updates...")
-        # allowed_updates=Update.ALL_TYPES 表示接收所有类型的更新
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-        logger.info("机器人轮询已停止。")
+        # --- 根据 TestMode 选择启动方式 ---
+        if config_loader.is_test_mode():
+            # 测试模式：启动轮询
+            logger.info("检测到测试模式，将使用 Polling 启动...")
+            application.run_polling(allowed_updates=Update.ALL_TYPES)
+        else:
+            # 生产模式：启动 Webhook
+            webhook_url = config_loader.get_webhook_url()
+            listen_address = config_loader.get_listen_address()
+            port = config_loader.get_listen_port()
+            secret_token = config_loader.get_webhook_secret_token()
+
+            logger.info("检测到生产模式，将使用 Webhook 启动...")
+            logger.info(f" - Webhook URL: {webhook_url}")
+            logger.info(f" - 监听地址: {listen_address}")
+            logger.info(f" - 监听端口: {port}")
+            logger.info(f" - Secret Token: {'已设置' if secret_token else '未设置'}")
+
+            # 启动内建的 Webhook 服务器
+            # 注意：这需要你的环境安装了 uvicorn 和 httpx[http2] (或者相应的依赖)
+            # PTB 会自动处理这些依赖
+            application.run_webhook(
+                listen=listen_address,
+                port=port,
+                secret_token=secret_token or None,  # 如果为空字符串则不传
+                webhook_url=webhook_url,  # 可选，但建议提供以便 PTB 验证
+                allowed_updates=Update.ALL_TYPES,
+            )
+
+        logger.info("机器人主循环已停止。")
+        # -----------------------------------
 
     # --- 异常处理和 finally 块 ---
     except InvalidToken:
@@ -342,10 +409,30 @@ def main():
         try:
             # 保存投稿数据 (data.json)
             data_manager.save_data_sync()
-            # 保存配置数据 (config.json, 主要是黑名单)
+            # 保存配置数据 (config.json, 主要是黑名单和警告用户)
             config_loader.save_config_sync()
+            # --- Webhook 清理 (仅生产模式) ---
+            if application and not config_loader.is_test_mode():
+                logger.info("尝试删除 Webhook 设置...")
+                # 使用 run_until_complete 确保异步操作在退出前完成
+                import asyncio
+
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 如果事件循环仍在运行 (例如正常关闭)
+                        loop.create_task(application.bot.delete_webhook())
+                    else:
+                        # 如果事件循环已停止 (例如异常退出)
+                        asyncio.run(application.bot.delete_webhook())
+                    logger.info("Webhook 已成功删除。")
+                except TelegramError as e:
+                    logger.warning(f"删除 Webhook 时出错: {e}")
+                except Exception as e:
+                    logger.error(f"删除 Webhook 时发生未知错误: {e}", exc_info=True)
+            # -----------------------------------
         except Exception as e:
-            logger.error(f"退出时保存数据或配置失败: {e}", exc_info=True)
+            logger.error(f"退出时保存数据、配置或清理 Webhook 失败: {e}", exc_info=True)
         logger.info("===== Submission Bot 已停止 =====")
 
 

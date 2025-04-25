@@ -1,17 +1,22 @@
 {
-    "Token": "YOUR_BOT_TOKEN",
-    "Admin": 123456789,
-    "Group_ID": 0,
-    "Publish_Channel_ID": "",
-    "ID": 0,
-    "Username": "",
-    "EnableFooter": true,
-    "ChatLink": "",
-    "WarningUsers": {},
-    "BlockedUsers": [],
-    "FooterEmojis": {
-        "submission": "👊",
-        "channel": "🌊",
-        "chat": "🔥"
-    }
+  "Token": "YOUR_BOT_TOKEN",
+  "Admin": 123456789,
+  "Group_ID": 0,
+  "Publish_Channel_ID": "",
+  "ID": 0,
+  "Username": "",
+  "TestMode": true,
+  "WebhookURL": "",
+  "WebhookSecretToken": "",
+  "ListenAddress": "0.0.0.0",
+  "ListenPort": 8443,
+  "EnableFooter": true,
+  "ChatLink": "",
+  "WarningUsers": {},
+  "BlockedUsers": [],
+  "FooterEmojis": {
+    "submission": "👊",
+    "channel": "🌊",
+    "chat": "🔥"
+  }
 }
